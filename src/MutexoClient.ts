@@ -61,6 +61,27 @@ function msgToName( msg: MutexoMessage ): MutexoClientEvtName | undefined
 
     return undefined;
 }
+
+const PENDING_IDS: number[] = [];
+
+function getUniqueId(): number
+{
+    let id: number;
+    while(
+        !PENDING_IDS.includes(
+            id = Math.floor( Math.random() * Number.MAX_SAFE_INTEGER )
+        )
+    ) {}
+    PENDING_IDS.push( id );
+    return id;
+}
+
+function releaseUniqueId( id: number )
+{
+    const idx = PENDING_IDS.indexOf( id );
+    if( idx < 0 ) return;
+    void PENDING_IDS.splice( idx, 1 );
+}
  
 export class MutexoClient
 {
@@ -173,15 +194,21 @@ export class MutexoClient
 
         const self = this;
 
+        const id = getUniqueId();
+
         return new Promise<MessageSuccess | MessageFailure>((resolve, reject) => {
             function handleSuccess( msg: MessageSuccess )
             {
+                if( msg.id !== id ) return;
+                releaseUniqueId( id );
                 self.off( "success", handleSuccess );
                 self.off( "failure", handleFailure );
                 resolve( msg );
             }
             function handleFailure( msg: MessageFailure )
             {
+                if( msg.id !== id ) return;
+                releaseUniqueId( id );
                 self.off( "success", handleSuccess );
                 self.off( "failure", handleFailure );
                 resolve( msg );
@@ -192,7 +219,8 @@ export class MutexoClient
             self.webSocket.send(
                 new ClientReqLock({
                     utxoRefs: utxoRefs.map( forceTxOutRef ),
-                    required
+                    required,
+                    id
                 }).toCbor().toBuffer()
             );
         });
@@ -206,15 +234,21 @@ export class MutexoClient
 
         const self = this;
 
+        const id = getUniqueId();
+
         return new Promise<MessageSuccess | MessageFailure>((resolve, reject) => {
             function handleSuccess( msg: MessageSuccess )
             {
+                if( msg.id !== id ) return;
+                releaseUniqueId( id );
                 self.off( "success", handleSuccess );
                 self.off( "failure", handleFailure );
                 resolve( msg );
             }
             function handleFailure( msg: MessageFailure )
             {
+                if( msg.id !== id ) return;
+                releaseUniqueId( id );
                 self.off( "success", handleSuccess );
                 self.off( "failure", handleFailure );
                 resolve( msg );
@@ -224,7 +258,8 @@ export class MutexoClient
             self.on( "failure", handleFailure );
             self.webSocket.send(
                 new ClientReqFree({
-                    utxoRefs: utxoRefs.map( forceTxOutRef )
+                    utxoRefs: utxoRefs.map( forceTxOutRef ),
+                    id
                 }).toCbor().toBuffer()
             );
         });

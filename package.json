@@ -9,7 +9,7 @@
         "test": "jest"
     },
     "dependencies": {
-        "@harmoniclabs/mutexo-messages": "^0.0.2",
+        "@harmoniclabs/mutexo-messages": "^0.0.4",
         "@harmoniclabs/obj-utils": "^1.0.0",
         "@harmoniclabs/uint8array-utils": "^1.0.0"
     },
