@@ -1,4 +1,4 @@
-import { ClientReqLock, ClientSub, ClientUnsub, Filter, MessageError, MessageFailure, MessageFree, MessageInput, MessageLock, MessageOutput, MessageSuccess, MutexoMessage } from "@harmoniclabs/mutexo-messages";
+import { ClientReqFree, ClientReqLock, ClientSub, ClientUnsub, Filter, MessageError, MessageFailure, MessageFree, MessageInput, MessageLock, MessageOutput, MessageSuccess, MutexoMessage } from "@harmoniclabs/mutexo-messages";
 import { CanBeTxOutRef, forceTxOutRef } from "@harmoniclabs/cardano-ledger-ts";
 import { eventNameToMutexoEventIndex, parseMutexoMessage } from "./utils";
 
@@ -223,7 +223,7 @@ export class MutexoClient
             self.on( "success", handleSuccess );
             self.on( "failure", handleFailure );
             self.webSocket.send(
-                new ClientReqLock({
+                new ClientReqFree({
                     utxoRefs: utxoRefs.map( forceTxOutRef )
                 }).toCbor().toBuffer()
             );
