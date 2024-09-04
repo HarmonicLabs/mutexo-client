@@ -1,6 +1,8 @@
-import { MessageError, MessageFailure, MessageFree, MessageInput, MessageLock, MessageOutput, MessageSuccess, MutexoMessage, mutexoMessageFromCborObj } from "@harmoniclabs/mutexo-messages";
+import { ClientReqLock, ClientSub, Filter, MessageError, MessageFailure, MessageFree, MessageInput, MessageLock, MessageOutput, MessageSuccess, MutexoMessage, mutexoMessageFromCborObj } from "@harmoniclabs/mutexo-messages";
 import { isObject } from "@harmoniclabs/obj-utils";
 import { CborArray } from "@harmoniclabs/cbor";
+import { eventNameToMutexoEventIndex } from "./utils";
+import { CanBeTxOutRef, forceTxOutRef } from "@harmoniclabs/cardano-ledger-ts";
 
 type MutexoClientEvtListener = ( msg: MutexoMessage ) => void;
 
@@ -14,7 +16,7 @@ type MutexoClientEvtListeners = {
     error: MutexoClientEvtListener[]
 };
 
-type MutexoClientEvtName = keyof MutexoClientEvtListeners;
+type MutexoClientEvtName = keyof MutexoClientEvtListeners & string;
 
 type EvtListenerOf<EvtName extends MutexoClientEvtName> = 
     EvtName extends "free"      ? ( msg: MessageFree ) => void :
@@ -142,132 +144,225 @@ export class MutexoClient
 {
     private readonly webSocket: WebSocket;
 
-    private eventListeners: { [key: string]: MutexoClientEvtListener[] } = {};
+    private eventListeners: Record<MutexoClientEvtName, MutexoClientEvtListener[]> = Object.freeze({
+        free: [],
+        lock: [],
+        input: [],
+        output: [],
+        success: [],
+        failure: [],
+        error: []
+    });
 
-    clearListeners!:        ( event?: MutexoClientEvtName ) => this;
-    removeAllListeners:     ( event?: MutexoClientEvtName ) => this;
+    private _wsReady: boolean;
+    async waitWsReady(): Promise<void>
+    {
+        if( this._wsReady ) return;
 
-    addEventListener:    <EvtName extends MutexoClientEvtName>( evt: EvtName, listener: EvtListenerOf<EvtName> ) => this
-    addListener:         <EvtName extends MutexoClientEvtName>( evt: EvtName, listener: EvtListenerOf<EvtName> ) => this
-    // on:                  <EvtName extends MutexoClientEvtName>( evt: EvtName, listener: EvtListenerOf<EvtName> ) => this
-    // once:                <EvtName extends MutexoClientEvtName>( evt: EvtName, listener: EvtListenerOf<EvtName> ) => this
-    removeEventListener: <EvtName extends MutexoClientEvtName>( evt: EvtName, listener: EvtListenerOf<EvtName> ) => this
-    removeListener:      <EvtName extends MutexoClientEvtName>( evt: EvtName, listener: EvtListenerOf<EvtName> ) => this
-    // off:                 <EvtName extends MutexoClientEvtName>( evt: EvtName, listener: EvtListenerOf<EvtName> ) => this
-    emit:                <EvtName extends MutexoClientEvtName>( evt: EvtName, msg: DataOf<EvtName> ) => boolean
-    dispatchEvent:       <EvtName extends MutexoClientEvtName>( evt: EvtName, msg: DataOf<EvtName> ) => boolean
+        return new Promise( ( resolve ) => {
+            this.webSocket.addEventListener(
+                "open",
+                () => {
+                    this._wsReady = true;
+                    resolve();
+                }, { once: true }
+            );
+        });
+    }
 
     constructor( webSocket: WebSocket )
     {
         this.webSocket = webSocket;
+        this.webSocket.binaryType = "arraybuffer";
+        this._wsReady = this.webSocket.readyState === WebSocket.OPEN;
 
-        this.clearListeners = ( event?: MutexoClientEvtName ) =>
+        if( !this._wsReady )
         {
-            if( isMutexoClientEvtName( event ) )
-            {
-                this.eventListeners[ event ] = [];
-            }
-            else
-            {
-                this.eventListeners = {
-                    free: [],
-                    lock: [],
-                    input: [],
-                    output: [],
-                    success: [],
-                    failure: [],
-                    error: []
-                };
-            }
-
-            return this;
+            this.webSocket.addEventListener(
+                "open",
+                () => {
+                    this._wsReady = true;
+                }, { once: true }
+            );
         }
 
-        this.addEventListener = ( event: MutexoClientEvtName, listener: MutexoClientEvtListener ) =>
-        {
-            if( !this.eventListeners[ event ] )
+        this.webSocket.addEventListener( "close", ( evt ) => { throw new Error("web socket closed unexpectedly"); });
+        this.webSocket.addEventListener( "error", ( evt ) => { throw new Error("web socket errored"); });
+
+        this.webSocket.addEventListener( "message", async ({ data }) => {
+            let bytes: Uint8Array;
+
+            if( data instanceof Blob ) data = await data.arrayBuffer();
+            
+            if( data instanceof ArrayBuffer ) bytes = new Uint8Array( data );
+            else if( data instanceof Uint8Array ) bytes = data;
+            else throw new Error( "Invalid data type" );
+
+            const msg = parseMutexoMessage( bytes );
+
+            const name = msgToName( msg );
+            if( typeof name !== "string" ) throw new Error( "Invalid message" );
+
+            this.dispatchEvent( name, msg as any );
+        });
+    }
+
+    async sub(
+        eventName: MutexoClientEvtName,
+        filters: Filter[] = []
+    ): Promise<void>
+    {
+        await this.waitWsReady();
+
+        this.webSocket.send(
+            new ClientSub({
+                // TODO: eventNameToMutexoEventIndex
+                eventType: eventNameToMutexoEventIndex( eventName ),
+                filters
+            }).toCbor().toBuffer()
+        );
+    }
+
+    async unsub(): Promise<void>
+    {
+        await this.waitWsReady();
+
+    }
+
+    async lock(
+        utxoRefs: CanBeTxOutRef[],
+        required: number = 1
+    ): Promise<MessageSuccess | MessageFailure>
+    {
+        await this.waitWsReady();
+
+        if(!(
+            Number.isSafeInteger( required ) &&
+            required > 0
+        )) required = 1;
+
+        const self = this;
+
+        return new Promise<MessageSuccess | MessageFailure>((resolve, reject) => {
+            function handleSucces( msg: MessageSuccess )
             {
-                this.eventListeners[ event ] = [];
+                self.off( "success", handleSucces );
+                self.off( "failure", handleFailure );
+                resolve( msg );
+            }
+            function handleFailure( msg: MessageFailure )
+            {
+                self.off( "success", handleSucces );
+                self.off( "failure", handleFailure );
+                resolve( msg );
             }
 
-            this.eventListeners[ event ].push( listener );
-
-            return this;
-        }
-        
+            self.on( "success", handleSucces );
+            self.on( "failure", handleFailure );
+            self.webSocket.send(
+                new ClientReqLock({
+                    utxoRefs: utxoRefs.map( forceTxOutRef ),
+                    required
+                }).toCbor().toBuffer()
+            );
+        });
     }
 
-    sub(): Promise<void>
+    async free(): Promise<void>
     {
+        await this.waitWsReady();
+
     }
 
-    unsub(): Promise<void>
+    addEventListener( evt: MutexoClientEvtName, callback: ( data: any ) => void ): this
     {
+        return this.on( evt, callback );
     }
-
-    lock(): Promise<void>
+    addListener( evt: MutexoClientEvtName, callback: ( data: any ) => void ): this
     {
+        return this.on( evt, callback );
     }
-
-    free(): Promise<void>
-    {
-    }
-
     on( evt: MutexoClientEvtName, callback: ( data: any ) => void ): this
     {
-        // switch( evt )
-        // {
-        //     case "free":
-        //         this.webSocket.addEventListener( "free", callback );
-        //         break;
-        //     case "lock":
-        //         this.webSocket.addEventListener( "lock", callback );
-        //         break;
-        //     case "input":
-        //         this.webSocket.addEventListener( "input", callback );
-        //         break;
-        //     case "output":
-        //         this.webSocket.addEventListener( "output", callback );
-        //         break;
-        //     case "success":
-        //         this.webSocket.addEventListener( "success", callback );
-        //         break;
-        //     case "failure":
-        //         this.webSocket.addEventListener( "failure", callback );
-        //         break;
-        //     case "error":
-        //         this.webSocket.addEventListener( "error", callback );
-        //         break;
-        //     default:
-        //         throw new Error( `Invalid event name: ${evt}` );
-        // }
+        const listeners = this.eventListeners[ evt ];
+        if( !listeners ) return this;
+
+        listeners.push( callback );
         
         return this;
     }
 
+    removeEventListener( evt: MutexoClientEvtName, callback: ( data: any ) => void )
+    {
+        return this.off( evt, callback );
+    }
+    removeistener( evt: MutexoClientEvtName, callback: ( data: any ) => void )
+    {
+        return this.off( evt, callback );
+    }
     off( evt: MutexoClientEvtName, callback: ( data: any ) => void )
     {
+        const listeners = this.eventListeners[ evt ];
+        if( !listeners ) return this;
 
+        const idx = listeners.findIndex(( cb ) => callback === cb );
+        if( idx < 0 ) return this; // not found, do nothing
+
+        void listeners.splice( idx, 1 );
+
+        return this;
     }
 
-    parseMutexoMessage( stuff: any ): MutexoMessage
+    emit<EvtName extends MutexoClientEvtName>( evt: EvtName, msg: DataOf<EvtName> ): boolean
     {
-        if(!( 
-            isObject( stuff ) &&
-            stuff instanceof CborArray 
-        )) throw new Error( "Invalid message" );
+        return this.dispatchEvent( evt, msg );
+    }
+    dispatchEvent<EvtName extends MutexoClientEvtName>( evt: EvtName, msg: DataOf<EvtName> ): boolean
+    {
+        const listeners = this.eventListeners[ evt ];
+        if( !listeners ) return false;
 
-        return mutexoMessageFromCborObj( stuff );
+        for( const listener of listeners )
+        {
+            listener( msg );
+        }
+
+        return true;
     }
 
+    removeAllListeners( event?: MutexoClientEvtName ): this
+    {
+        return this.clearListeners( event );
+    }
+    clearListeners( event?: MutexoClientEvtName ): this
+    {
+        if( isMutexoClientEvtName( event ) )
+        {
+            this.eventListeners[ event ] = [];
+        }
+        else
+        {
+            this.eventListeners = {
+                free: [],
+                lock: [],
+                input: [],
+                output: [],
+                success: [],
+                failure: [],
+                error: []
+            };
+        }
+
+        return this;
+    }
 }
 
-const client = new MutexoClient( new WebSocket( "ws://localhost:8080" ) );
+function parseMutexoMessage( stuff: any ): MutexoMessage
+{
+    if(!( 
+        isObject( stuff ) &&
+        stuff instanceof CborArray 
+    )) throw new Error( "Invalid message" );
 
-client.on( "free"       , ( data ) => { console.log( data ) } )
-client.on( "lock"       , ( data ) => { console.log( data ) } )
-client.on( "input"      , ( data ) => { console.log( data ) } )
-client.on( "output"     , ( data ) => { console.log( data ) } )
-client.on( "success"    , ( data ) => { console.log( data ) } )
-client.on( "failure"    , ( data ) => { console.log( data ) } )
-client.on( "error"      , ( data ) => { console.log( data ) } )
+    return mutexoMessageFromCborObj( stuff );
+}
