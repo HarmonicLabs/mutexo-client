@@ -1,8 +1,6 @@
-import { ClientReqLock, ClientSub, Filter, MessageError, MessageFailure, MessageFree, MessageInput, MessageLock, MessageOutput, MessageSuccess, MutexoMessage, mutexoMessageFromCborObj } from "@harmoniclabs/mutexo-messages";
-import { isObject } from "@harmoniclabs/obj-utils";
-import { CborArray } from "@harmoniclabs/cbor";
-import { eventNameToMutexoEventIndex } from "./utils";
+import { ClientReqLock, ClientSub, ClientUnsub, Filter, MessageError, MessageFailure, MessageFree, MessageInput, MessageLock, MessageOutput, MessageSuccess, MutexoMessage } from "@harmoniclabs/mutexo-messages";
 import { CanBeTxOutRef, forceTxOutRef } from "@harmoniclabs/cardano-ledger-ts";
+import { eventNameToMutexoEventIndex, parseMutexoMessage } from "./utils";
 
 type MutexoClientEvtListener = ( msg: MutexoMessage ) => void;
 
@@ -62,82 +60,6 @@ function msgToName( msg: MutexoMessage ): MutexoClientEvtName | undefined
     if( msg instanceof MessageError )       return "error";
 
     return undefined;
-}
-
-export interface IMutexoClient {
-    addEventListener( evt: "free"   , listener: MutexoClientEvtListener ): this
-    addEventListener( evt: "lock"   , listener: MutexoClientEvtListener ): this
-    addEventListener( evt: "input"  , listener: MutexoClientEvtListener ): this
-    addEventListener( evt: "output" , listener: MutexoClientEvtListener ): this
-    addEventListener( evt: "success", listener: MutexoClientEvtListener ): this
-    addEventListener( evt: "failure", listener: MutexoClientEvtListener ): this
-    addEventListener( evt: "error"  , listener: MutexoClientEvtListener ): this
-
-    addListener( evt: "free"   , listener: MutexoClientEvtListener ): this
-    addListener( evt: "lock"   , listener: MutexoClientEvtListener ): this
-    addListener( evt: "input"  , listener: MutexoClientEvtListener ): this
-    addListener( evt: "output" , listener: MutexoClientEvtListener ): this
-    addListener( evt: "success", listener: MutexoClientEvtListener ): this
-    addListener( evt: "failure", listener: MutexoClientEvtListener ): this
-    addListener( evt: "error"  , listener: MutexoClientEvtListener ): this
-
-    on( evt: "free"   , listener: MutexoClientEvtListener ): this
-    on( evt: "lock"   , listener: MutexoClientEvtListener ): this
-    on( evt: "input"  , listener: MutexoClientEvtListener ): this
-    on( evt: "output" , listener: MutexoClientEvtListener ): this
-    on( evt: "success", listener: MutexoClientEvtListener ): this
-    on( evt: "failure", listener: MutexoClientEvtListener ): this
-    on( evt: "error"  , listener: MutexoClientEvtListener ): this
-
-    // once( evt: "free"   , listener: MutexoClientEvtListener ): this
-    // once( evt: "lock"   , listener: MutexoClientEvtListener ): this
-    // once( evt: "input"  , listener: MutexoClientEvtListener ): this
-    // once( evt: "output" , listener: MutexoClientEvtListener ): this
-    // once( evt: "success", listener: MutexoClientEvtListener ): this
-    // once( evt: "failure", listener: MutexoClientEvtListener ): this
-    // once( evt: "error"  , listener: MutexoClientEvtListener ): this
-
-    removeEventListener( evt: "free"   , listener: MutexoClientEvtListener ): this
-    removeEventListener( evt: "lock"   , listener: MutexoClientEvtListener ): this
-    removeEventListener( evt: "input"  , listener: MutexoClientEvtListener ): this
-    removeEventListener( evt: "output" , listener: MutexoClientEvtListener ): this
-    removeEventListener( evt: "success", listener: MutexoClientEvtListener ): this
-    removeEventListener( evt: "failure", listener: MutexoClientEvtListener ): this
-    removeEventListener( evt: "error"  , listener: MutexoClientEvtListener ): this
-
-    removeListener( evt: "free"   , listener: MutexoClientEvtListener ): this
-    removeListener( evt: "lock"   , listener: MutexoClientEvtListener ): this
-    removeListener( evt: "input"  , listener: MutexoClientEvtListener ): this
-    removeListener( evt: "output" , listener: MutexoClientEvtListener ): this
-    removeListener( evt: "success", listener: MutexoClientEvtListener ): this
-    removeListener( evt: "failure", listener: MutexoClientEvtListener ): this
-    removeListener( evt: "error"  , listener: MutexoClientEvtListener ): this
-
-    off( evt: "free"    , listener: MutexoClientEvtListener ): this
-    off( evt: "lock"    , listener: MutexoClientEvtListener ): this
-    off( evt: "input"   , listener: MutexoClientEvtListener ): this
-    off( evt: "output"  , listener: MutexoClientEvtListener ): this
-    off( evt: "success" , listener: MutexoClientEvtListener ): this
-    off( evt: "failure" , listener: MutexoClientEvtListener ): this
-    off( evt: "error"   , listener: MutexoClientEvtListener ): this
-
-    removeAllListeners( evt?: MutexoClientEvtName ): this
-
-    emit( evt: "free"   , msg: MessageFree ): boolean
-    emit( evt: "lock"   , msg: MessageLock ): boolean
-    emit( evt: "input"  , msg: MessageInput ): boolean
-    emit( evt: "output" , msg: MessageOutput ): boolean
-    emit( evt: "success", msg: MessageSuccess ): boolean
-    emit( evt: "failure", msg: MessageFailure ): boolean
-    emit( evt: "error"  , msg: MessageError ): boolean
-
-    dispatchEvent( evt: "free"   , msg: MessageFree ): boolean
-    dispatchEvent( evt: "lock"   , msg: MessageLock ): boolean
-    dispatchEvent( evt: "input"  , msg: MessageInput ): boolean
-    dispatchEvent( evt: "output" , msg: MessageOutput ): boolean
-    dispatchEvent( evt: "success", msg: MessageSuccess ): boolean
-    dispatchEvent( evt: "failure", msg: MessageFailure ): boolean
-    dispatchEvent( evt: "error"  , msg: MessageError ): boolean
 }
  
 export class MutexoClient
@@ -216,17 +138,25 @@ export class MutexoClient
 
         this.webSocket.send(
             new ClientSub({
-                // TODO: eventNameToMutexoEventIndex
                 eventType: eventNameToMutexoEventIndex( eventName ),
                 filters
             }).toCbor().toBuffer()
         );
     }
 
-    async unsub(): Promise<void>
+    async unsub(
+        eventName: MutexoClientEvtName,
+        filters: Filter[] = []
+    ): Promise<void>
     {
         await this.waitWsReady();
 
+        this.webSocket.send(
+            new ClientUnsub({
+                eventType: eventNameToMutexoEventIndex( eventName ),
+                filters
+            }).toCbor().toBuffer()
+        );
     }
 
     async lock(
@@ -244,20 +174,20 @@ export class MutexoClient
         const self = this;
 
         return new Promise<MessageSuccess | MessageFailure>((resolve, reject) => {
-            function handleSucces( msg: MessageSuccess )
+            function handleSuccess( msg: MessageSuccess )
             {
-                self.off( "success", handleSucces );
+                self.off( "success", handleSuccess );
                 self.off( "failure", handleFailure );
                 resolve( msg );
             }
             function handleFailure( msg: MessageFailure )
             {
-                self.off( "success", handleSucces );
+                self.off( "success", handleSuccess );
                 self.off( "failure", handleFailure );
                 resolve( msg );
             }
 
-            self.on( "success", handleSucces );
+            self.on( "success", handleSuccess );
             self.on( "failure", handleFailure );
             self.webSocket.send(
                 new ClientReqLock({
@@ -268,10 +198,36 @@ export class MutexoClient
         });
     }
 
-    async free(): Promise<void>
+    async free( 
+        utxoRefs: CanBeTxOutRef[] 
+    ): Promise<MessageSuccess | MessageFailure>
     {
         await this.waitWsReady();
 
+        const self = this;
+
+        return new Promise<MessageSuccess | MessageFailure>((resolve, reject) => {
+            function handleSuccess( msg: MessageSuccess )
+            {
+                self.off( "success", handleSuccess );
+                self.off( "failure", handleFailure );
+                resolve( msg );
+            }
+            function handleFailure( msg: MessageFailure )
+            {
+                self.off( "success", handleSuccess );
+                self.off( "failure", handleFailure );
+                resolve( msg );
+            }
+
+            self.on( "success", handleSuccess );
+            self.on( "failure", handleFailure );
+            self.webSocket.send(
+                new ClientReqLock({
+                    utxoRefs: utxoRefs.map( forceTxOutRef )
+                }).toCbor().toBuffer()
+            );
+        });
     }
 
     addEventListener( evt: MutexoClientEvtName, callback: ( data: any ) => void ): this
@@ -355,14 +311,5 @@ export class MutexoClient
 
         return this;
     }
-}
 
-function parseMutexoMessage( stuff: any ): MutexoMessage
-{
-    if(!( 
-        isObject( stuff ) &&
-        stuff instanceof CborArray 
-    )) throw new Error( "Invalid message" );
-
-    return mutexoMessageFromCborObj( stuff );
 }
