@@ -160,6 +160,41 @@ export class MutexoClient
     constructor( webSocket: WebSocket )
     {
         this.webSocket = webSocket;
+
+        this.clearListeners = ( event?: MutexoClientEvtName ) =>
+        {
+            if( isMutexoClientEvtName( event ) )
+            {
+                this.eventListeners[ event ] = [];
+            }
+            else
+            {
+                this.eventListeners = {
+                    free: [],
+                    lock: [],
+                    input: [],
+                    output: [],
+                    success: [],
+                    failure: [],
+                    error: []
+                };
+            }
+
+            return this;
+        }
+
+        this.addEventListener = ( event: MutexoClientEvtName, listener: MutexoClientEvtListener ) =>
+        {
+            if( !this.eventListeners[ event ] )
+            {
+                this.eventListeners[ event ] = [];
+            }
+
+            this.eventListeners[ event ].push( listener );
+
+            return this;
+        }
+        
     }
 
     sub(): Promise<void>
