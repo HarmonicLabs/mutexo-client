@@ -1,8 +1,9 @@
-import { ClientReqFree, ClientReqLock, ClientSub, ClientUnsub, Filter, MessageError, MessageFailure, MessageFree, MessageInput, MessageLock, MessageOutput, MessageSuccess, MutexoMessage } from "@harmoniclabs/mutexo-messages";
+import { ClientReqFree, ClientReqLock, ClientSub, ClientUnsub, Filter, MessageError, MessageFailure, MessageFree, MessageInput, MessageLock, MessageOutput, MessageSuccess, MutexoMessage, parseMutexoMessage } from "@harmoniclabs/mutexo-messages";
 import { CanBeTxOutRef, forceTxOutRef } from "@harmoniclabs/cardano-ledger-ts";
-import { eventNameToMutexoEventIndex, parseMutexoMessage } from "./utils";
+import { eventNameToMutexoEventIndex, msgToName } from "./utils/mutexEvents";
+import { getUniqueId, releaseUniqueId } from "./utils/ids";
 
-type MutexoClientEvtListener = ( msg: MutexoMessage ) => void;
+export type MutexoClientEvtName = keyof MutexoClientEvtListeners & string;
 
 type MutexoClientEvtListeners = {
     free: MutexoClientEvtListener[],
@@ -14,17 +15,7 @@ type MutexoClientEvtListeners = {
     error: MutexoClientEvtListener[]
 };
 
-type MutexoClientEvtName = keyof MutexoClientEvtListeners & string;
-
-type EvtListenerOf<EvtName extends MutexoClientEvtName> = 
-    EvtName extends "free"      ? ( msg: MessageFree ) => void :
-    EvtName extends "lock"      ? ( msg: MessageLock ) => void :
-    EvtName extends "input"     ? ( msg: MessageInput ) => void :
-    EvtName extends "output"    ? ( msg: MessageOutput ) => void :
-    EvtName extends "success"   ? ( msg: MessageSuccess ) => void :
-    EvtName extends "failure"   ? ( msg: MessageFailure ) => void :
-    EvtName extends "error"     ? ( msg: MessageError ) => void :
-    never;
+type MutexoClientEvtListener = ( msg: MutexoMessage ) => void;
 
 type DataOf<EvtName extends MutexoClientEvtName> =
     EvtName extends "free"      ? MessageFree :
@@ -47,40 +38,6 @@ function isMutexoClientEvtName( stuff: any ): stuff is MutexoClientEvtName
         stuff === "failure" ||
         stuff === "error"
     );
-}
-
-function msgToName( msg: MutexoMessage ): MutexoClientEvtName | undefined
-{
-    if( msg instanceof MessageFree )        return "free";
-    if( msg instanceof MessageLock )        return "lock";
-    if( msg instanceof MessageInput )       return "input";
-    if( msg instanceof MessageOutput )      return "output";
-    if( msg instanceof MessageSuccess )     return "success";
-    if( msg instanceof MessageFailure )     return "failure";
-    if( msg instanceof MessageError )       return "error";
-
-    return undefined;
-}
-
-const PENDING_IDS: number[] = [];
-
-function getUniqueId(): number
-{
-    let id: number;
-    while(
-        !PENDING_IDS.includes(
-            id = Math.floor( Math.random() * Number.MAX_SAFE_INTEGER )
-        )
-    ) {}
-    PENDING_IDS.push( id );
-    return id;
-}
-
-function releaseUniqueId( id: number )
-{
-    const idx = PENDING_IDS.indexOf( id );
-    if( idx < 0 ) return;
-    void PENDING_IDS.splice( idx, 1 );
 }
  
 export class MutexoClient
