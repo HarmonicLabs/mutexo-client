@@ -5,7 +5,7 @@ import { CborArray } from "@harmoniclabs/cbor";
 
 export function eventNameToMutexoEventIndex( evtName: string ): number
 {
-    const evtIndex = MutexoEventIndex[ capitalizeFirstLetter( evtName ) ];
+    const evtIndex = MutexoEventIndex[ capitalizeFirstLetter( evtName ) as keyof typeof MutexoEventIndex ];
 
     if( evtIndex !== undefined ) return evtIndex
     else throw new Error( "Unknown event name: " + evtName );
