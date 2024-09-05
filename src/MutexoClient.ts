@@ -159,6 +159,7 @@ export class MutexoClient
 
         this.webSocket.send(
             new ClientSub({
+                id: getUniqueId(),
                 eventType: eventNameToMutexoEventIndex( eventName ),
                 filters
             }).toCbor().toBuffer()
@@ -174,6 +175,7 @@ export class MutexoClient
 
         this.webSocket.send(
             new ClientUnsub({
+                id: getUniqueId(),
                 eventType: eventNameToMutexoEventIndex( eventName ),
                 filters
             }).toCbor().toBuffer()
@@ -218,9 +220,9 @@ export class MutexoClient
             self.on( "failure", handleFailure );
             self.webSocket.send(
                 new ClientReqLock({
+                    id,
                     utxoRefs: utxoRefs.map( forceTxOutRef ),
-                    required,
-                    id
+                    required
                 }).toCbor().toBuffer()
             );
         });
@@ -258,8 +260,8 @@ export class MutexoClient
             self.on( "failure", handleFailure );
             self.webSocket.send(
                 new ClientReqFree({
-                    utxoRefs: utxoRefs.map( forceTxOutRef ),
-                    id
+                    id,
+                    utxoRefs: utxoRefs.map( forceTxOutRef )
                 }).toCbor().toBuffer()
             );
         });
