@@ -1,4 +1,5 @@
-import { ClientReqFree, ClientReqLock, ClientSub, ClientUnsub, Filter, MessageError, MessageFailure, MessageFree, MessageInput, MessageLock, MessageOutput, MessageSuccess, MutexoMessage, parseMutexoMessage } from "@harmoniclabs/mutexo-messages";
+import { ClientReqFree, ClientReqLock, ClientSub, ClientUnsub, Filter, MessageError, MessageFailure, MessageFree, MessageInput, MessageLock, MessageOutput, MessageSuccess, MutexoMessage } from "@harmoniclabs/mutexo-messages";
+import { parseMutexoMessage } from "@harmoniclabs/mutexo-messages/dist/utils/parsers";
 import { CanBeTxOutRef, forceTxOutRef } from "@harmoniclabs/cardano-ledger-ts";
 import { eventNameToMutexoEventIndex, msgToName } from "./utils/mutexEvents";
 import { getUniqueId, releaseUniqueId } from "./utils/ids";
