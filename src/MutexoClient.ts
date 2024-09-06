@@ -1,4 +1,6 @@
-import { ClientReqFree, ClientReqLock, ClientSub, ClientUnsub, Filter, MessageError, MessageFailure, MessageFree, MessageInput, MessageLock, MessageOutput, MessageSuccess, MutexoMessage } from "@harmoniclabs/mutexo-messages";
+import { ClientReqFree, ClientReqLock, ClientSub, ClientUnsub, Filter, MessageError, MessageMutexFailure, MessageFree, MessageInput, MessageLock, MessageOutput, MessageMutexSuccess, MutexoMessage } from "@harmoniclabs/mutexo-messages";
+import { MessageSubFailure } from "@harmoniclabs/mutexo-messages/dist/messages/MessageSubFailure";
+import { MessageSubSuccess } from "@harmoniclabs/mutexo-messages/dist/messages/MessageSubSuccess";
 import { parseMutexoMessage } from "@harmoniclabs/mutexo-messages/dist/utils/parsers";
 import { CanBeTxOutRef, forceTxOutRef } from "@harmoniclabs/cardano-ledger-ts";
 import { eventNameToMutexoEventIndex, msgToName } from "./utils/mutexEvents";
@@ -7,37 +9,43 @@ import { getUniqueId, releaseUniqueId } from "./utils/ids";
 export type MutexoClientEvtName = keyof MutexoClientEvtListeners & string;
 
 type MutexoClientEvtListeners = {
-    free: MutexoClientEvtListener[],
-    lock: MutexoClientEvtListener[],
-    input: MutexoClientEvtListener[],
-    output: MutexoClientEvtListener[],
-    success: MutexoClientEvtListener[],
-    failure: MutexoClientEvtListener[],
-    error: MutexoClientEvtListener[]
+    free:           MutexoClientEvtListener[],
+    lock:           MutexoClientEvtListener[],
+    input:          MutexoClientEvtListener[],
+    output:         MutexoClientEvtListener[],
+    mtxSuccess:     MutexoClientEvtListener[],
+    mtxFailure:     MutexoClientEvtListener[],
+    error:          MutexoClientEvtListener[]
+    subSuccess:     MutexoClientEvtListener[],
+    subFailure:     MutexoClientEvtListener[]
 };
 
 type MutexoClientEvtListener = ( msg: MutexoMessage ) => void;
 
 type DataOf<EvtName extends MutexoClientEvtName> =
-    EvtName extends "free"      ? MessageFree :
-    EvtName extends "lock"      ? MessageLock :
-    EvtName extends "input"     ? MessageInput :
-    EvtName extends "output"    ? MessageOutput :
-    EvtName extends "success"   ? MessageSuccess :
-    EvtName extends "failure"   ? MessageFailure :
-    EvtName extends "error"     ? MessageError :
+    EvtName extends "free"          ? MessageFree :
+    EvtName extends "lock"          ? MessageLock :
+    EvtName extends "input"         ? MessageInput :
+    EvtName extends "output"        ? MessageOutput :
+    EvtName extends "mtxSuccess"    ? MessageMutexSuccess :
+    EvtName extends "mtxFailure"    ? MessageMutexFailure :
+    EvtName extends "error"         ? MessageError :
+    EvtName extends "subSuccess"    ? MessageSubSuccess :
+    EvtName extends "subFailure"    ? MessageSubFailure :
     never;
 
 function isMutexoClientEvtName( stuff: any ): stuff is MutexoClientEvtName
 {
     return (
-        stuff === "free"    ||
-        stuff === "lock"    ||
-        stuff === "input"   ||
-        stuff === "output"  ||
-        stuff === "success" ||
-        stuff === "failure" ||
-        stuff === "error"
+        stuff === "free"        ||
+        stuff === "lock"        ||
+        stuff === "input"       ||
+        stuff === "output"      ||
+        stuff === "mtxSuccess"  ||
+        stuff === "mtxFailure"  ||
+        stuff === "error"       ||
+        stuff === "subSuccess"  ||
+        stuff === "subFailure"
     );
 }
  
@@ -50,9 +58,11 @@ export class MutexoClient
         lock: [],
         input: [],
         output: [],
-        success: [],
-        failure: [],
-        error: []
+        mtxSuccess: [],
+        mtxFailure: [],
+        error: [],
+        subSuccess: [],
+        subFailure: []
     });
 
     private _wsReady: boolean;
@@ -143,7 +153,7 @@ export class MutexoClient
     async lock(
         utxoRefs: CanBeTxOutRef[],
         required: number = 1
-    ): Promise<MessageSuccess | MessageFailure>
+    ): Promise<MessageMutexSuccess | MessageMutexFailure>
     {
         await this.waitWsReady();
 
@@ -156,26 +166,26 @@ export class MutexoClient
 
         const id = getUniqueId();
 
-        return new Promise<MessageSuccess | MessageFailure>((resolve, reject) => {
-            function handleSuccess( msg: MessageSuccess )
+        return new Promise<MessageMutexSuccess | MessageMutexFailure>((resolve, reject) => {
+            function handleSuccess( msg: MessageMutexSuccess )
             {
                 if( msg.id !== id ) return;
                 releaseUniqueId( id );
-                self.off( "success", handleSuccess );
-                self.off( "failure", handleFailure );
+                self.off( "mtxSuccess", handleSuccess );
+                self.off( "mtxFailure", handleFailure );
                 resolve( msg );
             }
-            function handleFailure( msg: MessageFailure )
+            function handleFailure( msg: MessageMutexFailure )
             {
                 if( msg.id !== id ) return;
                 releaseUniqueId( id );
-                self.off( "success", handleSuccess );
-                self.off( "failure", handleFailure );
+                self.off( "mtxSuccess", handleSuccess );
+                self.off( "mtxFailure", handleFailure );
                 resolve( msg );
             }
 
-            self.on( "success", handleSuccess );
-            self.on( "failure", handleFailure );
+            self.on( "mtxSuccess", handleSuccess );
+            self.on( "mtxFailure", handleFailure );
             self.webSocket.send(
                 new ClientReqLock({
                     id,
@@ -188,7 +198,7 @@ export class MutexoClient
 
     async free( 
         utxoRefs: CanBeTxOutRef[] 
-    ): Promise<MessageSuccess | MessageFailure>
+    ): Promise<MessageMutexSuccess | MessageMutexFailure>
     {
         await this.waitWsReady();
 
@@ -196,26 +206,26 @@ export class MutexoClient
 
         const id = getUniqueId();
 
-        return new Promise<MessageSuccess | MessageFailure>((resolve, reject) => {
-            function handleSuccess( msg: MessageSuccess )
+        return new Promise<MessageMutexSuccess | MessageMutexFailure>((resolve, reject) => {
+            function handleSuccess( msg: MessageMutexSuccess )
             {
                 if( msg.id !== id ) return;
                 releaseUniqueId( id );
-                self.off( "success", handleSuccess );
-                self.off( "failure", handleFailure );
+                self.off( "mtxSuccess", handleSuccess );
+                self.off( "mtxFailure", handleFailure );
                 resolve( msg );
             }
-            function handleFailure( msg: MessageFailure )
+            function handleFailure( msg: MessageMutexFailure )
             {
                 if( msg.id !== id ) return;
                 releaseUniqueId( id );
-                self.off( "success", handleSuccess );
-                self.off( "failure", handleFailure );
+                self.off( "mtxSuccess", handleSuccess );
+                self.off( "mtxFailure", handleFailure );
                 resolve( msg );
             }
 
-            self.on( "success", handleSuccess );
-            self.on( "failure", handleFailure );
+            self.on( "mtxSuccess", handleSuccess );
+            self.on( "mtxFailure", handleFailure );
             self.webSocket.send(
                 new ClientReqFree({
                     id,
@@ -298,9 +308,11 @@ export class MutexoClient
                 lock: [],
                 input: [],
                 output: [],
-                success: [],
-                failure: [],
-                error: []
+                mtxSuccess: [],
+                mtxFailure: [],
+                error: [],
+                subSuccess: [],
+                subFailure: []
             };
         }
 

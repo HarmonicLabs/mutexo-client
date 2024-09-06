@@ -1,6 +1,8 @@
-import { MessageError, MessageFailure, MessageFree, MessageInput, MessageLock, MessageOutput, MessageSuccess, MutexoMessage } from "@harmoniclabs/mutexo-messages";
+import { MessageError, MessageMutexFailure, MessageFree, MessageInput, MessageLock, MessageOutput, MessageMutexSuccess, MutexoMessage } from "@harmoniclabs/mutexo-messages";
 import { MutexoEventIndex } from "@harmoniclabs/mutexo-messages/dist/utils/constants";
 import { MutexoClientEvtName } from "../MutexoClient";
+import { MessageSubSuccess } from "@harmoniclabs/mutexo-messages/dist/messages/MessageSubSuccess";
+import { MessageSubFailure } from "@harmoniclabs/mutexo-messages/dist/messages/MessageSubFailure";
 
 export function eventNameToMutexoEventIndex( evtName: string ): number
 {
@@ -16,13 +18,15 @@ function capitalizeFirstLetter( str: string ): string {
 
 export function msgToName( msg: MutexoMessage ): MutexoClientEvtName | undefined
 {
-    if( msg instanceof MessageFree )        return "free";
-    if( msg instanceof MessageLock )        return "lock";
-    if( msg instanceof MessageInput )       return "input";
-    if( msg instanceof MessageOutput )      return "output";
-    if( msg instanceof MessageSuccess )     return "success";
-    if( msg instanceof MessageFailure )     return "failure";
-    if( msg instanceof MessageError )       return "error";
+    if( msg instanceof MessageFree )            return "free";
+    if( msg instanceof MessageLock )            return "lock";
+    if( msg instanceof MessageInput )           return "input";
+    if( msg instanceof MessageOutput )          return "output";
+    if( msg instanceof MessageMutexSuccess )    return "mtxSuccess";
+    if( msg instanceof MessageMutexFailure )    return "mtxFailure";
+    if( msg instanceof MessageError )           return "error";
+    if( msg instanceof MessageSubSuccess )      return "subSuccess";
+    if( msg instanceof MessageSubFailure )      return "subFailure";
 
     return undefined;
 }
