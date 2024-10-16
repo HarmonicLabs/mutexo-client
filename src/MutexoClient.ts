@@ -5,6 +5,7 @@ import { parseMutexoMessage } from "@harmoniclabs/mutexo-messages/dist/utils/par
 import { CanBeTxOutRef, forceTxOutRef } from "@harmoniclabs/cardano-ledger-ts";
 import { eventNameToMutexoEventIndex, msgToName } from "./utils/mutexEvents";
 import { getUniqueId, releaseUniqueId } from "./utils/ids";
+import WebSocket from "ws";
 
 export type MutexoClientEvtName = keyof MutexoClientEvtListeners & string;
 
@@ -15,7 +16,7 @@ type MutexoClientEvtListeners = {
     output:         MutexoClientEvtListener[],
     mtxSuccess:     MutexoClientEvtListener[],
     mtxFailure:     MutexoClientEvtListener[],
-    error:          MutexoClientEvtListener[]
+    error:          MutexoClientEvtListener[],
     subSuccess:     MutexoClientEvtListener[],
     subFailure:     MutexoClientEvtListener[]
 };
@@ -23,15 +24,15 @@ type MutexoClientEvtListeners = {
 type MutexoClientEvtListener = ( msg: MutexoMessage ) => void;
 
 type DataOf<EvtName extends MutexoClientEvtName> =
-    EvtName extends "free"          ? MessageFree :
-    EvtName extends "lock"          ? MessageLock :
-    EvtName extends "input"         ? MessageInput :
-    EvtName extends "output"        ? MessageOutput :
-    EvtName extends "mtxSuccess"    ? MessageMutexSuccess :
-    EvtName extends "mtxFailure"    ? MessageMutexFailure :
-    EvtName extends "error"         ? MessageError :
-    EvtName extends "subSuccess"    ? MessageSubSuccess :
-    EvtName extends "subFailure"    ? MessageSubFailure :
+    EvtName extends "free"          ? MessageFree 			:
+    EvtName extends "lock"          ? MessageLock 			:
+    EvtName extends "input"         ? MessageInput 			:
+    EvtName extends "output"        ? MessageOutput 		:
+    EvtName extends "mtxSuccess"    ? MessageMutexSuccess 	:
+    EvtName extends "mtxFailure"    ? MessageMutexFailure 	:
+    EvtName extends "error"         ? MessageError 			:
+    EvtName extends "subSuccess"    ? MessageSubSuccess 	:
+    EvtName extends "subFailure"    ? MessageSubFailure 	:
     never;
 
 function isMutexoClientEvtName( stuff: any ): stuff is MutexoClientEvtName
@@ -54,13 +55,13 @@ export class MutexoClient
     private readonly webSocket: WebSocket;
 
     private eventListeners: Record<MutexoClientEvtName, MutexoClientEvtListener[]> = Object.freeze({
-        free: [],
-        lock: [],
-        input: [],
-        output: [],
+        free: 		[],
+        lock: 		[],
+        input: 		[],
+        output: 	[],
         mtxSuccess: [],
         mtxFailure: [],
-        error: [],
+        error: 		[],
         subSuccess: [],
         subFailure: []
     });
@@ -70,14 +71,14 @@ export class MutexoClient
     {
         if( this._wsReady ) return;
 
-        return new Promise( ( resolve ) => {
-            this.webSocket.addEventListener(
-                "open",
-                () => {
-                    this._wsReady = true;
-                    resolve();
-                }, { once: true }
-            );
+        return new Promise(( resolve ) => {
+            this.webSocket.addEventListener("open", () => {
+				this._wsReady = true;
+				resolve();
+			}, 
+			{ 
+				once: true 
+			});
         });
     }
 
@@ -97,8 +98,13 @@ export class MutexoClient
             );
         }
 
-        this.webSocket.addEventListener( "close", ( evt ) => { throw new Error("web socket closed unexpectedly"); });
-        this.webSocket.addEventListener( "error", ( evt ) => { throw new Error("web socket errored"); });
+        this.webSocket.addEventListener( "close", ( evt ) => { throw new Error("web socket closed unexpectedly") });
+        this.webSocket.addEventListener( "error", ( evt ) => { 
+			console.log("!- MUTEXO CLIENT WEBSOCKET ERRORED -!\n");
+			console.log("> ERROR: ", evt, " <\n");
+			
+			throw new Error("web socket errored") 
+		});
 
         this.webSocket.addEventListener( "message", async ({ data }) => {
             let bytes: Uint8Array;
@@ -107,12 +113,12 @@ export class MutexoClient
             
             if( data instanceof ArrayBuffer ) bytes = new Uint8Array( data );
             else if( data instanceof Uint8Array ) bytes = data;
-            else throw new Error( "Invalid data type" );
+            else throw new Error("Invalid data type");
 
             const msg = parseMutexoMessage( bytes );
 
             const name = msgToName( msg );
-            if( typeof name !== "string" ) throw new Error( "Invalid message" );
+            if( typeof name !== "string" ) throw new Error("Invalid message");
 
             this.dispatchEvent( name, msg as any );
         });
@@ -304,13 +310,13 @@ export class MutexoClient
         else
         {
             this.eventListeners = {
-                free: [],
-                lock: [],
-                input: [],
-                output: [],
+                free: 		[],
+                lock: 		[],
+                input: 		[],
+                output: 	[],
                 mtxSuccess: [],
                 mtxFailure: [],
-                error: [],
+                error: 		[],
                 subSuccess: [],
                 subFailure: []
             };
