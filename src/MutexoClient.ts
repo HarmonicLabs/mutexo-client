@@ -98,7 +98,13 @@ export class MutexoClient
             );
         }
 
-        this.webSocket.addEventListener("close", ( evt ) => { throw new Error("web socket closed unexpectedly")});
+        this.webSocket.addEventListener("close", ( evt ) => { 
+			//debug
+			console.log("!- MUTEXO CLIENT WEBSOCKET CLOSING FOR REASON: ", evt," -!\n");
+
+			// throw new Error("web socket closed unexpectedly")
+		});
+
         this.webSocket.addEventListener("error", ( evt ) => { 
 			//debug
 			console.log("!- MUTEXO CLIENT WEBSOCKET ERRORED: -!\n", evt, "\n");
@@ -119,15 +125,23 @@ export class MutexoClient
             else if( data instanceof Uint8Array ) bytes = data;
             else throw new Error("Invalid data type");
 
-            const msg = parseMutexoMessage( bytes );
-
 			//debug
-			console.log("> MESSAGE: [", rndm, "]: ", msg, " <\n");
+            try
+			{
+				const msg = parseMutexoMessage( bytes );
 
-            const name = msgToName( msg );
-            if( typeof name !== "string" ) throw new Error("Invalid message");
+				//debug
+				console.log("> MESSAGE: [", rndm, "]: ", msg, " <\n");
 
-            this.dispatchEvent( name, msg as any );
+				const name = msgToName( msg );
+				if( typeof name !== "string" ) throw new Error("Invalid message");
+
+				this.dispatchEvent( name, msg as any );
+			}
+			catch( e )
+			{
+				console.log("> [", rndm, "] MUTEXO CLIENT MESSAGE ERROR OCCURED: ", e, " <\n");
+			}
         });
     }
 
