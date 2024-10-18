@@ -125,40 +125,70 @@ export class MutexoClient
             else if( data instanceof Uint8Array ) bytes = data;
             else throw new Error("Invalid data type");
 
+			const msg = parseMutexoMessage( bytes );
+
 			//debug
-            try
-			{
-				const msg = parseMutexoMessage( bytes );
+			console.log("> MESSAGE: [", rndm, "]: ", msg, " <\n");
 
-				//debug
-				console.log("> MESSAGE: [", rndm, "]: ", msg, " <\n");
+			const name = msgToName( msg );
+			if( typeof name !== "string" ) throw new Error("Invalid message");
 
-				const name = msgToName( msg );
-				if( typeof name !== "string" ) throw new Error("Invalid message");
-
-				this.dispatchEvent( name, msg as any );
-			}
-			catch( e )
-			{
-				console.log("> [", rndm, "] MUTEXO CLIENT MESSAGE ERROR OCCURED: ", e, " <\n");
-			}
+			this.dispatchEvent( name, msg as any );
         });
     }
 
     async sub(
         eventName: MutexoClientEvtName,
         filters: Filter[] = []
-    ): Promise<void>
+    ): Promise<MessageSubSuccess | MessageSubFailure>
     {
+		const rndm = Math.floor( Math.random() * 1000 );
+		console.log("!- WAITING FOR THE WS TO BE READY [", rndm, "] -!\n");
+
         await this.waitWsReady();
 
-        this.webSocket.send(
-            new ClientSub({
-                id: getUniqueId(),
-                eventType: eventNameToMutexoEventIndex( eventName ),
-                filters
-            }).toCbor().toBuffer()
-        );
+		console.log("> OK, IT'S READY! [", rndm, "] <\n");
+		console.log("!- CLIENT SUBBING FOR EVENT: ", eventName, " [", rndm, "] -!\n");
+
+		const self = this;
+
+        const id = getUniqueId();
+		
+		return new Promise<MessageSubSuccess | MessageSubFailure>((resolve, reject) => {
+            function handleSuccess( msg: MessageSubSuccess )
+            {
+                if( msg.id !== id ) return;
+                releaseUniqueId( id );
+                self.off("subSuccess", () => ( handleSuccess ));
+                self.off("subFailure", () => ( handleFailure ));
+
+				console.log("> [", rndm, "] SUBSCRIPTION SUCCESS: ", msg, " <\n");
+
+                resolve( msg );
+            }
+            function handleFailure( msg: MessageSubFailure )
+            {
+                if( msg.id !== id ) return;
+                releaseUniqueId( id );
+                self.off("subSuccess", () => ( handleSuccess ));
+                self.off("subFailure", () => ( handleFailure ));
+
+				console.log("> [", rndm, "] SUBSCRIPTION FAILURE: ", msg, " <\n");
+
+                resolve( msg );
+            }
+
+			self.on("subSuccess", () => ( handleSuccess ));
+			self.on("subFailure", () => ( handleFailure ));
+
+			this.webSocket.send(
+				new ClientSub({
+					id,
+					eventType: eventNameToMutexoEventIndex( eventName ),
+					filters
+				}).toCbor().toBuffer()
+			);
+        });
     }
 
     async unsub(
@@ -198,21 +228,21 @@ export class MutexoClient
             {
                 if( msg.id !== id ) return;
                 releaseUniqueId( id );
-                self.off( "mtxSuccess", handleSuccess );
-                self.off( "mtxFailure", handleFailure );
+                self.off("mtxSuccess", handleSuccess);
+                self.off("mtxFailure", handleFailure);
                 resolve( msg );
             }
             function handleFailure( msg: MessageMutexFailure )
             {
                 if( msg.id !== id ) return;
                 releaseUniqueId( id );
-                self.off( "mtxSuccess", handleSuccess );
-                self.off( "mtxFailure", handleFailure );
+                self.off("mtxSuccess", handleSuccess);
+                self.off("mtxFailure", handleFailure);
                 resolve( msg );
             }
 
-            self.on( "mtxSuccess", handleSuccess );
-            self.on( "mtxFailure", handleFailure );
+            self.on("mtxSuccess", handleSuccess);
+            self.on("mtxFailure", handleFailure);
             self.webSocket.send(
                 new ClientReqLock({
                     id,
