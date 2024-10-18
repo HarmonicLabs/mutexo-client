@@ -100,22 +100,22 @@ export class MutexoClient
 
         this.webSocket.addEventListener("close", ( evt ) => { 
 			//debug
-			console.log("!- MUTEXO CLIENT WEBSOCKET CLOSING FOR REASON: ", evt," -!\n");
-
-			// throw new Error("web socket closed unexpectedly")
+			var rndm = Math.floor( Math.random() * 1000 );
+			console.log("!- CLIENT WEBSOCKET CLOSING FOR REASON: [", rndm,"] -!\n");
+			console.log("> [", rndm, "] REASON: ", evt, " <\n");
 		});
 
-        this.webSocket.addEventListener("error", ( evt ) => { 
+        this.webSocket.addEventListener("error", ( err ) => { 
 			//debug
-			console.log("!- MUTEXO CLIENT WEBSOCKET ERRORED: -!\n", evt, "\n");
-			
-			// throw new Error("web socket errored") 
+			var rndm = Math.floor( Math.random() * 1000 );
+			console.log("!- CLIENT WEBSOCKET ERRORED: [", rndm,"] -!\n");
+			console.log("> [", rndm, "] ERROR: ", err, " <\n");
 		});
 
         this.webSocket.addEventListener("message", async ({ data }) => {
 			//debug
 			var rndm = Math.floor( Math.random() * 1000 );
-			console.log("!- MUTEXO CLIENT RECEIVED A MESSAGE [", rndm, "] -!\n");
+			console.log("!- CLIENT RECEIVED A MESSAGE [", rndm, "] -!\n");
 
             let bytes: Uint8Array;
 
@@ -142,18 +142,17 @@ export class MutexoClient
         filters: Filter[] = []
     ): Promise<MessageSubSuccess | MessageSubFailure>
     {
-		const rndm = Math.floor( Math.random() * 1000 );
-		console.log("!- WAITING FOR THE WS TO BE READY [", rndm, "] -!\n");
+        const id = getUniqueId();
+
+		console.log("!- WAITING FOR THE WS TO BE READY [", id, "] -!\n");
 
         await this.waitWsReady();
 
-		console.log("> OK, IT'S READY! [", rndm, "] <\n");
-		console.log("!- CLIENT SUBBING FOR EVENT: ", eventName, " [", rndm, "] -!\n");
+		console.log("> OK, CLIENT READY! [", id, "] <\n");
+		console.log("!- CLIENT SUBBING FOR EVENT: ", eventName, " [", id, "] -!\n");
 
 		const self = this;
 
-        const id = getUniqueId();
-		
 		return new Promise<MessageSubSuccess | MessageSubFailure>((resolve, reject) => {
             function handleSuccess( msg: MessageSubSuccess )
             {
@@ -162,7 +161,7 @@ export class MutexoClient
                 self.off("subSuccess", () => ( handleSuccess ));
                 self.off("subFailure", () => ( handleFailure ));
 
-				console.log("> [", rndm, "] SUBSCRIPTION SUCCESS: ", msg, " <\n");
+				console.log("> [", id, "] SUBSCRIPTION SUCCESS: ", msg, " <\n");
 
                 resolve( msg );
             }
@@ -173,13 +172,15 @@ export class MutexoClient
                 self.off("subSuccess", () => ( handleSuccess ));
                 self.off("subFailure", () => ( handleFailure ));
 
-				console.log("> [", rndm, "] SUBSCRIPTION FAILURE: ", msg, " <\n");
+				console.log("> [", id, "] SUBSCRIPTION FAILURE: ", msg, " <\n");
 
                 resolve( msg );
             }
 
 			self.on("subSuccess", () => ( handleSuccess ));
 			self.on("subFailure", () => ( handleFailure ));
+
+			console.log("!- SENDING SUB MESSAGE [", id, "] -!\n");
 
 			this.webSocket.send(
 				new ClientSub({
