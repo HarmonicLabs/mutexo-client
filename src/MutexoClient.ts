@@ -113,10 +113,6 @@ export class MutexoClient
 		});
 
         this.webSocket.addEventListener("message", async ({ data }) => {
-			//debug
-			var rndm = Math.floor( Math.random() * 1000 );
-			console.log("!- CLIENT RECEIVED A MESSAGE [", rndm, "] -!\n");
-
             let bytes: Uint8Array;
 
             if( data instanceof Blob ) data = await data.arrayBuffer();
@@ -128,7 +124,7 @@ export class MutexoClient
 			const msg = parseMutexoMessage( bytes );
 
 			//debug
-			console.log("> MESSAGE: [", rndm, "]: ", msg, " <\n");
+			console.log("> MESSAGE RECEIVED: ", msg, " <\n");
 
 			const name = msgToName( msg );
 			if( typeof name !== "string" ) throw new Error("Invalid message");
