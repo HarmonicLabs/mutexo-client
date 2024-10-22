@@ -24,7 +24,7 @@ export function msgToName( msg: MutexoMessage ): MutexoClientEvtName | undefined
     if( msg instanceof MessageOutput )          return "output";
     if( msg instanceof MessageMutexSuccess )    return "mtxSuccess";
     if( msg instanceof MessageMutexFailure )    return "mtxFailure";
-    if( msg instanceof MessageError )           return "commError";
+    if( msg instanceof MessageError )           return "error";
     if( msg instanceof MessageSubSuccess )      return "subSuccess";
     if( msg instanceof MessageSubFailure )      return "subFailure";
 

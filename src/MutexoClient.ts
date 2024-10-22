@@ -16,7 +16,7 @@ type MutexoClientEvtListeners = {
     output:         MutexoClientEvtListener[],
     mtxSuccess:     MutexoClientEvtListener[],
     mtxFailure:     MutexoClientEvtListener[],
-    commError:          MutexoClientEvtListener[],
+    error:          MutexoClientEvtListener[],
     subSuccess:     MutexoClientEvtListener[],
     subFailure:     MutexoClientEvtListener[]
 };
@@ -30,7 +30,7 @@ type DataOf<EvtName extends MutexoClientEvtName> =
     EvtName extends "output"        ? MessageOutput 		:
     EvtName extends "mtxSuccess"    ? MessageMutexSuccess 	:
     EvtName extends "mtxFailure"    ? MessageMutexFailure 	:
-    EvtName extends "commError"         ? MessageError 			:
+    EvtName extends "error"     ? MessageError 			:
     EvtName extends "subSuccess"    ? MessageSubSuccess 	:
     EvtName extends "subFailure"    ? MessageSubFailure 	:
     never;
@@ -44,7 +44,7 @@ function isMutexoClientEvtName( stuff: any ): stuff is MutexoClientEvtName
         stuff === "output"      ||
         stuff === "mtxSuccess"  ||
         stuff === "mtxFailure"  ||
-        stuff === "commError"       ||
+        stuff === "error"       ||
         stuff === "subSuccess"  ||
         stuff === "subFailure"
     );
@@ -61,7 +61,7 @@ export class MutexoClient
         output: 	[],
         mtxSuccess: [],
         mtxFailure: [],
-        commError: 		[],
+        error: 		[],
         subSuccess: [],
         subFailure: []
     });
@@ -156,7 +156,7 @@ export class MutexoClient
                 releaseUniqueId( id );
                 self.off("subSuccess", ( msg ) => ( handleSuccess( msg ) ));
                 self.off("subFailure", ( msg ) => ( handleFailure( msg ) ));
-                self.off("commError", ( msg ) => ( handleError( msg ) ));
+                self.off("error", ( msg ) => ( handleError( msg ) ));
 
                 resolve( msg );
             }
@@ -166,7 +166,7 @@ export class MutexoClient
                 releaseUniqueId( id );
                 self.off("subSuccess", ( msg ) => ( handleSuccess( msg ) ));
                 self.off("subFailure", ( msg ) => ( handleFailure( msg ) ));
-                self.off("commError", ( msg ) => ( handleError( msg ) ));
+                self.off("error", ( msg ) => ( handleError( msg ) ));
 
                 resolve( msg );
             }
@@ -175,14 +175,15 @@ export class MutexoClient
                 releaseUniqueId( id );
                 self.off("subSuccess", ( msg ) => ( handleSuccess( msg ) ));
                 self.off("subFailure", ( msg ) => ( handleFailure( msg ) ));
-                self.off("commError", ( msg ) => ( handleError( msg ) ));
+                self.off("error", ( msg ) => ( handleError( msg ) ));
+                // self.dispatchEvent("error", msg);
 
-                resolve( msg );
+                reject( new Error( msg.message ) );
             }
 
 			self.on("subSuccess", ( msg ) => ( handleSuccess( msg ) ));
 			self.on("subFailure", ( msg ) => ( handleFailure( msg ) ));
-            self.on("commError", ( msg ) => ( handleError( msg ) ));
+            self.on("error", ( msg ) => ( handleError( msg ) ));
 
 			self.webSocket.send(
 				new ClientSub({
@@ -378,7 +379,7 @@ export class MutexoClient
                 output: 	[],
                 mtxSuccess: [],
                 mtxFailure: [],
-                commError: 		[],
+                error: 		[],
                 subSuccess: [],
                 subFailure: []
             };
