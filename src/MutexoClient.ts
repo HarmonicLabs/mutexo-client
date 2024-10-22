@@ -1,4 +1,4 @@
-import { ClientReqFree, ClientReqLock, ClientSub, ClientUnsub, Filter, MessageError, MessageMutexFailure, MessageFree, MessageInput, MessageLock, MessageOutput, MessageMutexSuccess, MutexoMessage } from "@harmoniclabs/mutexo-messages";
+import { ClientReqFree, ClientReqLock, ClientSub, ClientUnsub, Filter, MessageError, MessageMutexFailure, MessageFree, MessageInput, MessageLock, MessageOutput, MessageMutexSuccess, MutexoMessage, MessageClose } from "@harmoniclabs/mutexo-messages";
 import { MessageSubFailure } from "@harmoniclabs/mutexo-messages/dist/messages/MessageSubFailure";
 import { MessageSubSuccess } from "@harmoniclabs/mutexo-messages/dist/messages/MessageSubSuccess";
 import { parseMutexoMessage } from "@harmoniclabs/mutexo-messages/dist/utils/parsers";
@@ -131,6 +131,11 @@ export class MutexoClient
 
 			this.dispatchEvent( name, msg as any );
         });
+
+        process.on("beforeExit", () => {
+            this?.close();
+        });
+        process.on("exit", () => { this?.close(); })
     }
 
     async sub(
@@ -278,6 +283,14 @@ export class MutexoClient
                 }).toCbor().toBuffer()
             );
         });
+    }
+
+    close()
+    {
+        this.webSocket.send(
+            new MessageClose().toCbor().toBuffer()
+        );
+        this.webSocket.close();
     }
 
     addEventListener( evt: MutexoClientEvtName, callback: ( data: any ) => void ): this
