@@ -16,7 +16,7 @@ type MutexoClientEvtListeners = {
     output:         MutexoClientEvtListener[],
     mtxSuccess:     MutexoClientEvtListener[],
     mtxFailure:     MutexoClientEvtListener[],
-    error:          MutexoClientEvtListener[],
+    commError:          MutexoClientEvtListener[],
     subSuccess:     MutexoClientEvtListener[],
     subFailure:     MutexoClientEvtListener[]
 };
@@ -30,7 +30,7 @@ type DataOf<EvtName extends MutexoClientEvtName> =
     EvtName extends "output"        ? MessageOutput 		:
     EvtName extends "mtxSuccess"    ? MessageMutexSuccess 	:
     EvtName extends "mtxFailure"    ? MessageMutexFailure 	:
-    EvtName extends "error"         ? MessageError 			:
+    EvtName extends "commError"         ? MessageError 			:
     EvtName extends "subSuccess"    ? MessageSubSuccess 	:
     EvtName extends "subFailure"    ? MessageSubFailure 	:
     never;
@@ -44,7 +44,7 @@ function isMutexoClientEvtName( stuff: any ): stuff is MutexoClientEvtName
         stuff === "output"      ||
         stuff === "mtxSuccess"  ||
         stuff === "mtxFailure"  ||
-        stuff === "error"       ||
+        stuff === "commError"       ||
         stuff === "subSuccess"  ||
         stuff === "subFailure"
     );
@@ -61,7 +61,7 @@ export class MutexoClient
         output: 	[],
         mtxSuccess: [],
         mtxFailure: [],
-        error: 		[],
+        commError: 		[],
         subSuccess: [],
         subFailure: []
     });
@@ -132,16 +132,14 @@ export class MutexoClient
 			this.dispatchEvent( name, msg as any );
         });
 
-        process.on("beforeExit", () => {
-            this?.close();
-        });
+        process.on("beforeExit", () => { this?.close(); });
         process.on("exit", () => { this?.close(); })
     }
 
     async sub(
         eventName: MutexoClientEvtName,
         filters: Filter[] = []
-    ): Promise<MessageSubSuccess | MessageSubFailure>
+    ): Promise<MessageSubSuccess | MessageSubFailure | MessageError>
     {
         const id = getUniqueId();
 
@@ -151,13 +149,14 @@ export class MutexoClient
 
 		const self = this;
 
-		return new Promise<MessageSubSuccess | MessageSubFailure>((resolve, reject) => {
+		return new Promise<MessageSubSuccess | MessageSubFailure| MessageError>((resolve, reject) => {
             function handleSuccess( msg: MessageSubSuccess )
             {
 				if( msg.id !== id ) return;
                 releaseUniqueId( id );
                 self.off("subSuccess", ( msg ) => ( handleSuccess( msg ) ));
                 self.off("subFailure", ( msg ) => ( handleFailure( msg ) ));
+                self.off("commError", ( msg ) => ( handleError( msg ) ));
 
                 resolve( msg );
             }
@@ -167,12 +166,23 @@ export class MutexoClient
                 releaseUniqueId( id );
                 self.off("subSuccess", ( msg ) => ( handleSuccess( msg ) ));
                 self.off("subFailure", ( msg ) => ( handleFailure( msg ) ));
+                self.off("commError", ( msg ) => ( handleError( msg ) ));
+
+                resolve( msg );
+            }
+            function handleError( msg: MessageError )
+            {
+                releaseUniqueId( id );
+                self.off("subSuccess", ( msg ) => ( handleSuccess( msg ) ));
+                self.off("subFailure", ( msg ) => ( handleFailure( msg ) ));
+                self.off("commError", ( msg ) => ( handleError( msg ) ));
 
                 resolve( msg );
             }
 
 			self.on("subSuccess", ( msg ) => ( handleSuccess( msg ) ));
 			self.on("subFailure", ( msg ) => ( handleFailure( msg ) ));
+            self.on("commError", ( msg ) => ( handleError( msg ) ));
 
 			self.webSocket.send(
 				new ClientSub({
@@ -368,7 +378,7 @@ export class MutexoClient
                 output: 	[],
                 mtxSuccess: [],
                 mtxFailure: [],
-                error: 		[],
+                commError: 		[],
                 subSuccess: [],
                 subFailure: []
             };
