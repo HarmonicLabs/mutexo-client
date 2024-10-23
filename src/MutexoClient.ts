@@ -30,7 +30,7 @@ type DataOf<EvtName extends MutexoClientEvtName> =
     EvtName extends "output"        ? MessageOutput 		:
     EvtName extends "mtxSuccess"    ? MessageMutexSuccess 	:
     EvtName extends "mtxFailure"    ? MessageMutexFailure 	:
-    EvtName extends "error"     ? MessageError 			:
+    EvtName extends "error"         ? MessageError 			:
     EvtName extends "subSuccess"    ? MessageSubSuccess 	:
     EvtName extends "subFailure"    ? MessageSubFailure 	:
     never;
@@ -198,17 +198,60 @@ export class MutexoClient
     async unsub(
         eventName: MutexoClientEvtName,
         filters: Filter[] = []
-    ): Promise<void>
+    ): Promise<MessageSubSuccess | MessageSubFailure | MessageError>
     {
+        const id = getUniqueId();
+
         await this.waitWsReady();
 
-        this.webSocket.send(
-            new ClientUnsub({
-                id: getUniqueId(),
-                eventType: eventNameToMutexoEventIndex( eventName ),
-                filters
-            }).toCbor().toBuffer()
-        );
+		console.log("!- CLIENT UNSUBBING FOR EVENT: ", eventName, " [", id, "] -!\n");
+
+		const self = this;
+
+		return new Promise<MessageSubSuccess | MessageSubFailure| MessageError>((resolve, reject) => {
+            function handleSuccess( msg: MessageSubSuccess )
+            {
+				if( msg.id !== id ) return;
+                releaseUniqueId( id );
+                self.off("subSuccess", ( msg ) => ( handleSuccess( msg ) ));
+                self.off("subFailure", ( msg ) => ( handleFailure( msg ) ));
+                self.off("error", ( msg ) => ( handleError( msg ) ));
+
+                resolve( msg );
+            }
+            function handleFailure( msg: MessageSubFailure )
+            {                				
+				if( msg.id !== id ) return;
+                releaseUniqueId( id );
+                self.off("subSuccess", ( msg ) => ( handleSuccess( msg ) ));
+                self.off("subFailure", ( msg ) => ( handleFailure( msg ) ));
+                self.off("error", ( msg ) => ( handleError( msg ) ));
+
+                resolve( msg );
+            }
+            function handleError( msg: MessageError )
+            {
+                releaseUniqueId( id );
+                self.off("subSuccess", ( msg ) => ( handleSuccess( msg ) ));
+                self.off("subFailure", ( msg ) => ( handleFailure( msg ) ));
+                self.off("error", ( msg ) => ( handleError( msg ) ));
+                // self.dispatchEvent("error", msg);
+
+                reject( new Error( msg.message ) );
+            }
+
+			self.on("subSuccess", ( msg ) => ( handleSuccess( msg ) ));
+			self.on("subFailure", ( msg ) => ( handleFailure( msg ) ));
+            self.on("error", ( msg ) => ( handleError( msg ) ));
+
+			self.webSocket.send(
+				new ClientUnsub({
+					id,
+					eventType: eventNameToMutexoEventIndex( eventName ),
+					filters
+				}).toCbor().toBuffer()
+			);
+        });
     }
 
     async lock(
