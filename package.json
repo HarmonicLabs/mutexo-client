@@ -1,7 +1,7 @@
 {
     "name": "@harmoniclabs/mutexo-client",
     "type": "commonjs",
-    "version": "0.0.2",
+    "version": "0.0.3",
     "bin": "dist/index.js",
     "scripts": {
         "build": "rm -rf ./dist && tsc --project ./tsconfig.json && tsc-alias -p ./tsconfig.json",
@@ -9,12 +9,12 @@
         "test": "jest"
     },
     "dependencies": {
-        "@harmoniclabs/mutexo-messages": "^0.0.10",
+        "@harmoniclabs/mutexo-messages": "^0.0.11",
         "@harmoniclabs/obj-utils": "^1.0.0",
         "@harmoniclabs/uint8array-utils": "^1.0.0"
     },
     "peerDependencies": {
-        "@harmoniclabs/cardano-ledger-ts": "^0.1.2",
+        "@harmoniclabs/cardano-ledger-ts": "^0.2.6",
         "@harmoniclabs/cbor": "^1.1.4"
     },
     "devDependencies": {
