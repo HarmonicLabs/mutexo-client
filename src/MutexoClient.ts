@@ -6,6 +6,7 @@ import { CanBeTxOutRef, forceTxOutRef } from "@harmoniclabs/cardano-ledger-ts";
 import { eventNameToMutexoEventIndex, msgToName } from "./utils/mutexEvents";
 import { getUniqueId, releaseUniqueId } from "./utils/ids";
 import WebSocket from "ws";
+import { toHex } from "@harmoniclabs/uint8array-utils";
 
 export type MutexoClientEvtName = keyof MutexoClientEvtListeners & string;
 
@@ -121,7 +122,11 @@ export class MutexoClient
             else if( data instanceof Uint8Array ) bytes = data;
             else throw new Error("Invalid data type");
 
+            console.log( toHex( bytes ) );
+
 			const msg = parseMutexoMessage( bytes );
+
+
 
 			//debug
 			console.log("> MESSAGE RECEIVED: ", msg, " <\n");
@@ -176,7 +181,6 @@ export class MutexoClient
                 self.off("subSuccess", ( msg ) => ( handleSuccess( msg ) ));
                 self.off("subFailure", ( msg ) => ( handleFailure( msg ) ));
                 self.off("error", ( msg ) => ( handleError( msg ) ));
-                // self.dispatchEvent("error", msg);
 
                 reject( new Error( msg.message ) );
             }
@@ -235,7 +239,6 @@ export class MutexoClient
                 self.off("subSuccess", ( msg ) => ( handleSuccess( msg ) ));
                 self.off("subFailure", ( msg ) => ( handleFailure( msg ) ));
                 self.off("error", ( msg ) => ( handleError( msg ) ));
-                // self.dispatchEvent("error", msg);
 
                 reject( new Error( msg.message ) );
             }
@@ -257,8 +260,10 @@ export class MutexoClient
     async lock(
         utxoRefs: CanBeTxOutRef[],
         required: number = 1
-    ): Promise<MessageMutexSuccess | MessageMutexFailure>
+    ): Promise<MessageMutexSuccess | MessageMutexFailure | MessageError>
     {
+        const id = getUniqueId();
+        
         await this.waitWsReady();
 
         if(!(
@@ -266,30 +271,45 @@ export class MutexoClient
             required > 0
         )) required = 1;
 
+		console.log("!- CLIENT LOCKING ", required ," UTXOS: [", id, "] -!\n");
+
         const self = this;
 
-        const id = getUniqueId();
-
-        return new Promise<MessageMutexSuccess | MessageMutexFailure>((resolve, reject) => {
+        return new Promise<MessageMutexSuccess | MessageMutexFailure | MessageError>((resolve, reject) => {
             function handleSuccess( msg: MessageMutexSuccess )
             {
                 if( msg.id !== id ) return;
                 releaseUniqueId( id );
-                self.off("mtxSuccess", handleSuccess);
-                self.off("mtxFailure", handleFailure);
+                self.off("mtxSuccess", ( msg ) => ( handleSuccess( msg ) ));
+                self.off("mtxFailure", ( msg ) => ( handleFailure( msg ) ));
+                self.off("error", ( msg ) => ( handleError( msg ) ));
+
                 resolve( msg );
             }
             function handleFailure( msg: MessageMutexFailure )
             {
                 if( msg.id !== id ) return;
                 releaseUniqueId( id );
-                self.off("mtxSuccess", handleSuccess);
-                self.off("mtxFailure", handleFailure);
+                self.off("mtxSuccess", ( msg ) => ( handleSuccess( msg ) ));
+                self.off("mtxFailure", ( msg ) => ( handleFailure( msg ) ));
+                self.off("error", ( msg ) => ( handleError( msg ) ));
+
                 resolve( msg );
             }
+            function handleError( msg: MessageError )
+            {
+                releaseUniqueId( id );
+                self.off("mtxSuccess", ( msg ) => ( handleSuccess( msg ) ));
+                self.off("mtxFailure", ( msg ) => ( handleFailure( msg ) ));
+                self.off("error", ( msg ) => ( handleError( msg ) ));
 
-            self.on("mtxSuccess", handleSuccess);
-            self.on("mtxFailure", handleFailure);
+                reject( new Error( msg.message ) );
+            }
+
+            self.on("mtxSuccess", ( msg ) => ( handleSuccess( msg ) ));
+			self.on("mtxFailure", ( msg ) => ( handleFailure( msg ) ));
+            self.on("error", ( msg ) => ( handleError( msg ) ));
+
             self.webSocket.send(
                 new ClientReqLock({
                     id,
@@ -302,34 +322,51 @@ export class MutexoClient
 
     async free( 
         utxoRefs: CanBeTxOutRef[] 
-    ): Promise<MessageMutexSuccess | MessageMutexFailure>
+    ): Promise<MessageMutexSuccess | MessageMutexFailure | MessageError>
     {
+        const id = getUniqueId();
+
         await this.waitWsReady();
+
+		console.log("!- CLIENT FREEING UTXOS: [", id, "] -!\n");
 
         const self = this;
 
-        const id = getUniqueId();
-
-        return new Promise<MessageMutexSuccess | MessageMutexFailure>((resolve, reject) => {
-            function handleSuccess( msg: MessageMutexSuccess )
+        return new Promise<MessageMutexSuccess | MessageMutexFailure | MessageError>((resolve, reject) => {
+            function handleMtxSuccess( msg: MessageMutexSuccess )
             {
                 if( msg.id !== id ) return;
                 releaseUniqueId( id );
-                self.off( "mtxSuccess", handleSuccess );
-                self.off( "mtxFailure", handleFailure );
+                self.off("mtxSuccess", ( msg ) => ( handleMtxSuccess( msg ) ));
+                self.off("mtxFailure", ( msg ) => ( handleMtxFailure( msg ) ));
+                self.off("error", ( msg ) => ( handleError( msg ) ));
+
                 resolve( msg );
             }
-            function handleFailure( msg: MessageMutexFailure )
+            function handleMtxFailure( msg: MessageMutexFailure )
             {
                 if( msg.id !== id ) return;
                 releaseUniqueId( id );
-                self.off( "mtxSuccess", handleSuccess );
-                self.off( "mtxFailure", handleFailure );
+                self.off("mtxSuccess", ( msg ) => ( handleMtxSuccess( msg ) ));
+                self.off("mtxFailure", ( msg ) => ( handleMtxFailure( msg ) ));
+                self.off("error", ( msg ) => ( handleError( msg ) ));
+
                 resolve( msg );
             }
+            function handleError( msg: MessageError )
+            {
+                releaseUniqueId( id );
+                self.off("mtxSuccess", ( msg ) => ( handleMtxSuccess( msg ) ));
+                self.off("mtxFailure", ( msg ) => ( handleMtxFailure( msg ) ));
+                self.off("error", ( msg ) => ( handleError( msg ) ));
 
-            self.on( "mtxSuccess", handleSuccess );
-            self.on( "mtxFailure", handleFailure );
+                reject( new Error( msg.message ) );
+            }
+
+            self.on("mtxSuccess", ( msg ) => ( handleMtxSuccess( msg ) ));
+			self.on("mtxFailure", ( msg ) => ( handleMtxFailure( msg ) ));
+            self.on("error", ( msg ) => ( handleError( msg ) ));
+
             self.webSocket.send(
                 new ClientReqFree({
                     id,
@@ -341,9 +378,7 @@ export class MutexoClient
 
     close()
     {
-        this.webSocket.send(
-            new MessageClose().toCbor().toBuffer()
-        );
+        this.webSocket.send( new MessageClose().toCbor().toBuffer() );
         this.webSocket.close();
     }
 
