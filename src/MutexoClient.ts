@@ -122,16 +122,17 @@ export class MutexoClient
             else if( data instanceof Uint8Array ) bytes = data;
             else throw new Error("Invalid data type");
 
-            console.log( toHex( bytes ) );
+            console.log(">>> ", toHex( bytes ), " <<<\n" );
 
 			const msg = parseMutexoMessage( bytes );
-
-
 
 			//debug
 			console.log("> MESSAGE RECEIVED: ", msg, " <\n");
 
 			const name = msgToName( msg );
+
+            console.log(">>> ", name, " <<<\n" );
+
 			if( typeof name !== "string" ) throw new Error("Invalid message");
 
 			this.dispatchEvent( name, msg as any );
