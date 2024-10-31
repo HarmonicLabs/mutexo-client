@@ -101,16 +101,18 @@ export class MutexoClient
 
         this.webSocket.addEventListener("close", ( evt ) => { 
 			//debug
-			var rndm = Math.floor( Math.random() * 1000 );
-			console.log("!- CLIENT WEBSOCKET CLOSING FOR REASON: [", rndm,"] -!\n");
-			console.log("> [", rndm, "] REASON: ", evt, " <\n");
+			// var rndm = Math.floor( Math.random() * 1000 );
+			// console.log("!- CLIENT WEBSOCKET CLOSING FOR REASON: [", rndm,"] -!\n");
+			// console.log("> [", rndm, "] REASON: ", evt, " <\n");
+			console.log("!- CLIENT WEBSOCKET CLOSING -!\n");
 		});
 
         this.webSocket.addEventListener("error", ( err ) => { 
 			//debug
-			var rndm = Math.floor( Math.random() * 1000 );
-			console.log("!- CLIENT WEBSOCKET ERRORED: [", rndm,"] -!\n");
-			console.log("> [", rndm, "] ERROR: ", err, " <\n");
+			// var rndm = Math.floor( Math.random() * 1000 );
+			// console.log("!- CLIENT WEBSOCKET ERRORED: [", rndm,"] -!\n");
+			// console.log("> [", rndm, "] ERROR: ", err, " <\n");
+			console.log("!- CLIENT WEBSOCKET ERRORED -!\n");
 		});
 
         this.webSocket.addEventListener("message", async ({ data }) => {
@@ -122,16 +124,12 @@ export class MutexoClient
             else if( data instanceof Uint8Array ) bytes = data;
             else throw new Error("Invalid data type");
 
-            console.log(">>> ", toHex( bytes ), " <<<\n" );
-
 			const msg = parseMutexoMessage( bytes );
 
 			//debug
 			console.log("> MESSAGE RECEIVED: ", msg, " <\n");
 
 			const name = msgToName( msg );
-
-            console.log(">>> ", name, " <<<\n" );
 
 			if( typeof name !== "string" ) throw new Error("Invalid message");
 
@@ -148,9 +146,9 @@ export class MutexoClient
     ): Promise<MessageSubSuccess | MessageSubFailure | MessageError>
     {
         const id = getUniqueId();
-
         await this.waitWsReady();
 
+		//debug
 		console.log("!- CLIENT SUBBING FOR EVENT: ", eventName, " [", id, "] -!\n");
 
 		const self = this;
@@ -206,9 +204,9 @@ export class MutexoClient
     ): Promise<MessageSubSuccess | MessageSubFailure | MessageError>
     {
         const id = getUniqueId();
-
         await this.waitWsReady();
 
+		//debug
 		console.log("!- CLIENT UNSUBBING FOR EVENT: ", eventName, " [", id, "] -!\n");
 
 		const self = this;
@@ -264,7 +262,6 @@ export class MutexoClient
     ): Promise<MessageMutexSuccess | MessageMutexFailure | MessageError>
     {
         const id = getUniqueId();
-        
         await this.waitWsReady();
 
         if(!(
@@ -272,6 +269,7 @@ export class MutexoClient
             required > 0
         )) required = 1;
 
+		//debug
 		console.log("!- CLIENT LOCKING ", required ," UTXOS: [", id, "] -!\n");
 
         const self = this;
@@ -326,9 +324,9 @@ export class MutexoClient
     ): Promise<MessageMutexSuccess | MessageMutexFailure | MessageError>
     {
         const id = getUniqueId();
-
         await this.waitWsReady();
 
+		//debug
 		console.log("!- CLIENT FREEING UTXOS: [", id, "] -!\n");
 
         const self = this;
