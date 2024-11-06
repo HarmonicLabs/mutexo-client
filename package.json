@@ -1,7 +1,7 @@
 {
     "name": "@harmoniclabs/mutexo-client",
     "type": "commonjs",
-    "version": "0.0.4",
+    "version": "0.0.5",
     "bin": "dist/index.js",
     "scripts": {
         "build": "rm -rf ./dist && tsc --project ./tsconfig.json && tsc-alias -p ./tsconfig.json",
