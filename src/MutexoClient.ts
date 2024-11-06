@@ -6,7 +6,6 @@ import { CanBeTxOutRef, forceTxOutRef } from "@harmoniclabs/cardano-ledger-ts";
 import { eventNameToMutexoEventIndex, msgToName } from "./utils/mutexEvents";
 import { getUniqueId, releaseUniqueId } from "./utils/ids";
 import WebSocket from "ws";
-import { toHex } from "@harmoniclabs/uint8array-utils";
 
 export type MutexoClientEvtName = keyof MutexoClientEvtListeners & string;
 
