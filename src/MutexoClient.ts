@@ -1,6 +1,4 @@
-import { ClientReqFree, ClientReqLock, ClientSub, ClientUnsub, Filter, MessageError, MessageMutexFailure, MessageFree, MessageInput, MessageLock, MessageOutput, MessageMutexSuccess, MutexoMessage, MessageClose } from "@harmoniclabs/mutexo-messages";
-import { MessageSubFailure } from "@harmoniclabs/mutexo-messages/dist/messages/MessageSubFailure";
-import { MessageSubSuccess } from "@harmoniclabs/mutexo-messages/dist/messages/MessageSubSuccess";
+import { ClientReqFree, ClientReqLock, ClientSub, ClientUnsub, Filter, MessageError, MessageMutexFailure, MessageFree, MessageInput, MessageLock, MessageOutput, MessageMutexSuccess, MutexoMessage, MessageClose, MessageSubFailure, MessageSubSuccess } from "@harmoniclabs/mutexo-messages";
 import { parseMutexoMessage } from "@harmoniclabs/mutexo-messages/dist/utils/parsers";
 import { CanBeTxOutRef, forceTxOutRef } from "@harmoniclabs/cardano-ledger-ts";
 import { eventNameToMutexoEventIndex, msgToName } from "./utils/mutexEvents";
@@ -100,18 +98,14 @@ export class MutexoClient
 
         this.webSocket.addEventListener("close", ( evt ) => { 
 			//debug
-			// var rndm = Math.floor( Math.random() * 1000 );
-			// console.log("!- CLIENT WEBSOCKET CLOSING FOR REASON: [", rndm,"] -!\n");
-			// console.log("> [", rndm, "] REASON: ", evt, " <\n");
 			console.log("!- CLIENT WEBSOCKET CLOSING -!\n");
+			console.log("> REASON: ", evt, " <\n");
 		});
 
         this.webSocket.addEventListener("error", ( err ) => { 
 			//debug
-			// var rndm = Math.floor( Math.random() * 1000 );
-			// console.log("!- CLIENT WEBSOCKET ERRORED: [", rndm,"] -!\n");
-			// console.log("> [", rndm, "] ERROR: ", err, " <\n");
 			console.log("!- CLIENT WEBSOCKET ERRORED -!\n");
+			console.log("> ERROR: ", err, " <\n");
 		});
 
         this.webSocket.addEventListener("message", async ({ data }) => {
