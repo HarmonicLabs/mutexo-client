@@ -1,60 +1,13 @@
-import { ClientReqFree, ClientReqLock, ClientSub, ClientUnsub, Filter, MutexoError, MutexFailure, MutexoFree, MutexoInput, MutexoLock, MutexoOutput, MutexSuccess, MutexoMessage, SubFailure, SubSuccess, Close } from "@harmoniclabs/mutexo-messages";
-import { parseMutexoMessage } from "@harmoniclabs/mutexo-messages/dist/utils/parsers";
+import { ClientReqFree, ClientReqLock, ClientSub, ClientUnsub, IFilter, MutexoError, MutexFailure, MutexoFree, MutexoInput, MutexoLock, MutexoOutput, MutexSuccess, MutexoMessage, SubFailure, SubSuccess, Close, forceFilter, mutexoMessageFromCbor, mutexoMessageFromCborObj, mutexoMessageToName, MutexoChainEventName, mutexoEventNameToIndex, isMutexoChainEventName, MutexoChainEventIndex, MutexoEventListeners, DataOf, MutexoEventName, MutexoEventListener, isMutexoEventName } from "@harmoniclabs/mutexo-messages";
 import { CanBeTxOutRef, forceTxOutRef } from "@harmoniclabs/cardano-ledger-ts";
-import { eventNameToMutexoEventIndex, msgToName } from "./utils/mutexEvents";
-import { getUniqueId, releaseUniqueId } from "./utils/ids";
+import { getUniqueId, releaseUniqueId } from "./utils/clientReqIds";
+import { Cbor } from "@harmoniclabs/cbor";
 
-export type MutexoClientEvtName = keyof MutexoClientEvtListeners;
-
-type MutexoClientEvtListeners = {
-    free:           MutexoClientEvtListener[],
-    lock:           MutexoClientEvtListener[],
-    input:          MutexoClientEvtListener[],
-    output:         MutexoClientEvtListener[],
-    mutexSuccess:   MutexoClientEvtListener[],
-    mutexFailure:   MutexoClientEvtListener[],
-    close:          MutexoClientEvtListener[],
-    error:          MutexoClientEvtListener[],
-    subSuccess:     MutexoClientEvtListener[],
-    subFailure:     MutexoClientEvtListener[]
-};
-
-type MutexoClientEvtListener = ( msg: MutexoMessage ) => void;
-
-type DataOf<EvtName extends MutexoClientEvtName> =
-    EvtName extends "free"          ? MutexoFree    :
-    EvtName extends "lock"          ? MutexoLock   :
-    EvtName extends "input"         ? MutexoInput   :
-    EvtName extends "output"        ? MutexoOutput  :
-    EvtName extends "mutexSuccess"  ? MutexSuccess  :
-    EvtName extends "mutexFailure"  ? MutexFailure  :
-    EvtName extends "close"         ? Close 	    :
-    EvtName extends "error"         ? MutexoError   :
-    EvtName extends "subSuccess"    ? SubSuccess    :
-    EvtName extends "subFailure"    ? SubFailure    :
-    never;
-
-function isMutexoClientEvtName( stuff: any ): stuff is MutexoClientEvtName
-{
-    return (
-        stuff === "free"            ||
-        stuff === "lock"            ||
-        stuff === "input"           ||
-        stuff === "output"          ||
-        stuff === "mutexSuccess"    ||
-        stuff === "mutexFailure"    ||
-        stuff === "close"    ||
-        stuff === "error"           ||
-        stuff === "subSuccess"      ||
-        stuff === "subFailure"
-    );
-}
- 
 export class MutexoClient
 {
     private readonly webSocket: WebSocket;
 
-    private readonly _eventListeners: Record<MutexoClientEvtName, MutexoClientEvtListener[]> = Object.freeze({
+    private readonly _eventListeners: MutexoEventListeners = Object.freeze({
         free: 		    [],
         lock: 		    [],
         input: 		    [],
@@ -66,7 +19,7 @@ export class MutexoClient
         subSuccess:     [],
         subFailure:     []
     });
-    private readonly _onceEventListeners: Record<MutexoClientEvtName, MutexoClientEvtListener[]> = Object.freeze({
+    private readonly _onceEventListeners: MutexoEventListeners = Object.freeze({
         free: 		    [],
         lock: 		    [],
         input: 		    [],
@@ -166,9 +119,9 @@ export class MutexoClient
             else if( data instanceof Uint8Array ) bytes = data;
             else throw new Error("Invalid data type");
 
-			const msg = parseMutexoMessage( bytes );
+			const msg = mutexoMessageFromCborObj( Cbor.parse( bytes ) );
 
-			const name = msgToName( msg );
+			const name = mutexoMessageToName( msg );
 
 			if( typeof name !== "string" ) throw new Error("Invalid message");
 
@@ -181,16 +134,37 @@ export class MutexoClient
         process.on("exit", () => { self?._destroy(); })
     }
 
-    async sub<EvtName extends MutexoClientEvtName>(
-        eventName: MutexoClientEvtName,
-        filters: Filter[] = [],
+    async sub<EvtName extends MutexoChainEventName>(
+        eventName: EvtName,
+        evtHandler?: ( msg: DataOf<EvtName> ) => void
+    ): Promise<SubSuccess | SubFailure>
+    async sub<EvtName extends MutexoChainEventName>(
+        eventName: EvtName,
+        filters?: IFilter[],
+        evtHandler?: ( msg: DataOf<EvtName> ) => void,
+    ): Promise<SubSuccess | SubFailure>
+    async sub<EvtName extends MutexoChainEventName>(
+        eventName: EvtName,
+        filters?: IFilter[] | (( msg: DataOf<EvtName> ) => void),
         evtHandler?: ( msg: DataOf<EvtName> ) => void,
     ): Promise<SubSuccess | SubFailure>
     {
+        if( !isMutexoChainEventName( eventName ) )
+            throw new Error("Invalid event name, only chain events can be used to subscribe");
+
         const id = getUniqueId();
         await this.waitWsReady();
 
-        const hasEvtHandler = typeof evtHandler === "function";
+        // handle different overloads
+        if( typeof evtHandler !== "function" )
+        {
+            evtHandler = (
+                typeof filters === "function" ?
+                filters :
+                undefined
+            );
+        }
+        filters = Array.isArray( filters ) ? filters.map( forceFilter ) : [];
 
 		const self = this;
 
@@ -200,7 +174,8 @@ export class MutexoClient
 				if( msg.id !== id ) return;
                 releaseUniqueId( id );
 
-                if( hasEvtHandler ) self.addEventListener(eventName, evtHandler);
+                if( typeof evtHandler === "function" )
+                    self.addEventListener(eventName, evtHandler);
 
                 self.off("subSuccess", handleSuccess);
                 self.off("subFailure", handleFailure);
@@ -243,7 +218,7 @@ export class MutexoClient
 			self.webSocket.send(
 				new ClientSub({
 					id,
-					eventType: eventNameToMutexoEventIndex( eventName ),
+					chainEventIndex: mutexoEventNameToIndex( eventName ) as MutexoChainEventIndex,
 					filters
 				}).toCbor().toBuffer()
 			);
@@ -251,10 +226,13 @@ export class MutexoClient
     }
 
     async unsub(
-        eventName: MutexoClientEvtName,
-        filters: Filter[] = []
+        eventName: MutexoChainEventName,
+        filters: IFilter[] = []
     ): Promise<SubSuccess | SubFailure>
     {
+        if( !isMutexoChainEventName( eventName ) )
+            throw new Error("Invalid event name, only chain events can be used");
+
         const id = getUniqueId();
         await this.waitWsReady();
 
@@ -301,7 +279,7 @@ export class MutexoClient
 			self.webSocket.send(
 				new ClientUnsub({
 					id,
-					eventType: eventNameToMutexoEventIndex( eventName ),
+					chainEventIndex: mutexoEventNameToIndex( eventName ) as MutexoChainEventIndex,
 					filters
 				}).toCbor().toBuffer()
 			);
@@ -440,15 +418,15 @@ export class MutexoClient
         this._destroy();
     }
 
-    addEventListener<Evt extends MutexoClientEvtName>( evt: Evt, callback: ( data: DataOf<Evt> ) => void, opts?: AddEventListenerOptions ): this
+    addEventListener<Evt extends MutexoEventName>( evt: Evt, callback: ( data: DataOf<Evt> ) => void, opts?: AddEventListenerOptions ): this
     {
         return this.on( evt, callback, opts );
     }
-    addListener<Evt extends MutexoClientEvtName>( evt: Evt, callback: ( data: DataOf<Evt> ) => void, opts?: AddEventListenerOptions ): this
+    addListener<Evt extends MutexoEventName>( evt: Evt, callback: ( data: DataOf<Evt> ) => void, opts?: AddEventListenerOptions ): this
     {
         return this.on( evt, callback, opts );
     }
-    on<Evt extends MutexoClientEvtName>( evt: Evt, callback: ( data: DataOf<Evt> ) => void, opts?: AddEventListenerOptions ): this
+    on<Evt extends MutexoEventName>( evt: Evt, callback: ( data: DataOf<Evt> ) => void, opts?: AddEventListenerOptions ): this
     {
         if( opts?.once ) return this.addEventListenerOnce( evt, callback );
         
@@ -460,11 +438,11 @@ export class MutexoClient
         return this;
     }
 
-    addEventListenerOnce( evt: MutexoClientEvtName, callback: ( data: any ) => void ): this
+    addEventListenerOnce( evt: MutexoEventName, callback: ( data: any ) => void ): this
     {
         return this.once( evt, callback );
     }
-    once( evt: MutexoClientEvtName, callback: ( data: any ) => void ): this
+    once( evt: MutexoEventName, callback: ( data: any ) => void ): this
     {
         const listeners = this._onceEventListeners[ evt ];
         if( !listeners ) return this;
@@ -474,15 +452,15 @@ export class MutexoClient
         return this;
     }
 
-    removeEventListener( evt: MutexoClientEvtName, callback: ( data: any ) => void )
+    removeEventListener( evt: MutexoEventName, callback: ( data: any ) => void )
     {
         return this.off( evt, callback );
     }
-    removeListener( evt: MutexoClientEvtName, callback: ( data: any ) => void )
+    removeListener( evt: MutexoEventName, callback: ( data: any ) => void )
     {
         return this.off( evt, callback );
     }
-    off( evt: MutexoClientEvtName, callback: ( data: any ) => void )
+    off( evt: MutexoEventName, callback: ( data: any ) => void )
     {
         let listeners = this._eventListeners[ evt ];
         if( Array.isArray( listeners ) ) 
@@ -504,11 +482,11 @@ export class MutexoClient
         return this;
     }
 
-    emit<EvtName extends MutexoClientEvtName>( evt: EvtName, msg: DataOf<EvtName> ): boolean
+    emit<EvtName extends MutexoEventName>( evt: EvtName, msg: DataOf<EvtName> ): boolean
     {
         return this.dispatchEvent( evt, msg );
     }
-    dispatchEvent<EvtName extends MutexoClientEvtName>( evt: EvtName, msg: DataOf<EvtName> ): boolean
+    dispatchEvent<EvtName extends MutexoEventName>( evt: EvtName, msg: DataOf<EvtName> ): boolean
     {
 		let listeners = this._eventListeners[ evt ];
         if( !listeners ) return false;
@@ -517,19 +495,19 @@ export class MutexoClient
 
         listeners = this._onceEventListeners[ evt ];
 
-        let cb: MutexoClientEvtListener;
+        let cb: MutexoEventListener;
         while( cb = listeners.shift()! ) cb( msg );
 
         return true;
     }
 
-    removeAllListeners( event?: MutexoClientEvtName ): this
+    removeAllListeners( event?: MutexoEventName ): this
     {
         return this.clearListeners( event );
     }
-    clearListeners( event?: MutexoClientEvtName ): this
+    clearListeners( event?: MutexoEventName ): this
     {
-        if( isMutexoClientEvtName( event ) )
+        if( isMutexoEventName( event ) )
         {
             this._eventListeners[ event ].length = 0;
             this._onceEventListeners[ event ].length = 0
@@ -544,7 +522,7 @@ export class MutexoClient
     }
 }
 
-function _clearAllListeners( listeners: MutexoClientEvtListeners )
+function _clearAllListeners( listeners: MutexoEventListeners )
 {
     listeners.free.length = 0;
     listeners.lock.length = 0;
