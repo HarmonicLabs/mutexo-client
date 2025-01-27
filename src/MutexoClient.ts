@@ -3,6 +3,11 @@ import { CanBeTxOutRef, forceTxOutRef } from "@harmoniclabs/cardano-ledger-ts";
 import { getUniqueId, releaseUniqueId } from "./utils/clientReqIds";
 import { Cbor } from "@harmoniclabs/cbor";
 
+export interface AuthInfos {
+    token: string;
+    port: number;
+}
+
 export class MutexoClient
 {
     private readonly webSocket: WebSocket;
@@ -54,7 +59,7 @@ export class MutexoClient
      * 
      * the token is valid for 30 seconds
      */
-    static async fetchAuthToken( httpUrl: string | URL ): Promise<string>
+    static async fetchAuthInfos( httpUrl: string | URL ): Promise<AuthInfos>
     {
         if( typeof httpUrl === "string" ) httpUrl = new URL( httpUrl );
 
@@ -64,7 +69,7 @@ export class MutexoClient
         const res = await fetch( httpUrl.toString() );
         if( !res.ok ) throw new Error("Failed to fetch auth token");
 
-        return await res.text();
+        return await res.json();
     }
 
     /**
@@ -90,10 +95,11 @@ export class MutexoClient
         url.pathname = "";
         url.search = "";
 
-        const token = await MutexoClient.fetchAuthToken( url.toString() );
+        const { token, port } = await MutexoClient.fetchAuthInfos( url.toString() );
 
         url.protocol = isSecureConnection ? "wss:" : "ws:";
-        url.pathname = "/wsAuth";
+        url.pathname = "/events";
+        url.port = port.toString();
         url.searchParams.set("token", token);
 
         return url.toString();
