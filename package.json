@@ -1,14 +1,31 @@
 {
     "name": "@harmoniclabs/mutexo-client",
+    "version": "0.0.7",
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
     "type": "commonjs",
-    "version": "0.0.6",
-    "bin": "dist/index.js",
+    "files": [
+        "dist"
+    ],
     "scripts": {
         "buidl": "npm run build",
         "build": "rm -rf ./dist && tsc --project ./tsconfig.json && tsc-alias -p ./tsconfig.json",
         "start": "npm run build && node dist/index.js",
         "test": "jest"
     },
+    "publishConfig": {
+      "registry": "https://registry.npmjs.org"
+    },
+    "author": "Harmonic Labs",
+    "license": "Apache-2.0",
+    "repository": {
+      "type": "git",
+      "url": "git+https://github.com/HarmonicLabs/mutexo-client.git"
+    },
+    "bugs": {
+      "url": "https://github.com/HarmonicLabs/mutexo-client/issues"
+    },
+    "homepage": "https://github.com/HarmonicLabs/mutexo-client#readme",
     "dependencies": {
         "@harmoniclabs/cardano-ledger-ts": "^0.3.1",
         "@harmoniclabs/cbor": "^1.5.0",
