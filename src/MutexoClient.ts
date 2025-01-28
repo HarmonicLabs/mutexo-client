@@ -2,6 +2,7 @@ import { ClientReqFree, ClientReqLock, ClientSub, ClientUnsub, IFilter, MutexoEr
 import { CanBeTxOutRef, forceTxOutRef } from "@harmoniclabs/cardano-ledger-ts";
 import { getUniqueId, releaseUniqueId } from "./utils/clientReqIds";
 import { Cbor } from "@harmoniclabs/cbor";
+import { SocketLike, WrappedSocket, wrapSocket } from "./utils/SocketLike";
 
 export interface AuthInfos {
     token: string;
@@ -10,7 +11,7 @@ export interface AuthInfos {
 
 export class MutexoClient
 {
-    private readonly webSocket: WebSocket;
+    private readonly socket: WrappedSocket;
 
     private readonly _eventListeners: MutexoEventListeners = Object.freeze({
         free: 		    [],
@@ -42,15 +43,25 @@ export class MutexoClient
     private _wsReady: boolean;
     async waitWsReady(): Promise<void>
     {
+        while( !this.socket ) { await new Promise(( resolve ) => setTimeout( resolve, 100 )); }
+
         if( this._destroyed ) throw new Error("Client was closed");
         if( this._wsReady ) return;
 
         return new Promise(( resolve ) => {
-            this.webSocket.addEventListener("open", () => {
+            const handler = () => {
 				this._wsReady = true;
 				resolve();
-			}, 
-			{ once: true });
+			};
+            
+            this.socket.on("connect", handler);
+
+            if( this.socket.isReady() )
+            {
+                this.socket.off("connect", handler);
+                this._wsReady = true;
+                resolve();
+            }
         });
     }
 
@@ -105,21 +116,35 @@ export class MutexoClient
         return url.toString();
     }
 
-    constructor( webSocket: WebSocket )
+    constructor( createSocket: () => (Promise<SocketLike> | SocketLike) )
     {
-        this.webSocket = webSocket;
-        this.webSocket.binaryType = "arraybuffer";
-        this._wsReady = this.webSocket.readyState === WebSocket.OPEN;
+        const self = this;
 
+        const createSocketResult = createSocket();
+        if( createSocketResult instanceof Promise )
+        {
+            createSocketResult.then( socket => {
+                (self as any).socket = wrapSocket( socket );
+            });
+            (this as any).socket = undefined;
+            this._wsReady = false;
+        }
+        else
+        {
+            this.socket = wrapSocket( createSocketResult );
+            this._wsReady = this.socket.isReady();
+        }
+
+        // updates _wsReady as soon as the socket is ready
         this.waitWsReady();
 
-        this.webSocket.addEventListener("close", this._destroy );
-        this.webSocket.addEventListener("error", this._destroy );
+        this.socket.on("close", this._destroy );
+        this.socket.on("error", this._destroy );
 
-        this.webSocket.addEventListener("message", async ({ data }) => {
+        this.socket.on("data", async data => {
             let bytes: Uint8Array;
 
-            if( data instanceof Blob ) data = await data.arrayBuffer();
+            if( data instanceof Blob ) data = await data.arrayBuffer() as any;
             
             if( data instanceof ArrayBuffer ) bytes = new Uint8Array( data );
             else if( data instanceof Uint8Array ) bytes = data;
@@ -133,8 +158,6 @@ export class MutexoClient
 
 			this.dispatchEvent( name, msg as any );
         });
-
-        const self = this;
 
         process.on("beforeExit", () => { self?._destroy(); });
         process.on("exit", () => { self?._destroy(); })
@@ -221,7 +244,7 @@ export class MutexoClient
 
             // if( hasEvtHandler ) self.addEventListener(eventName, evtHandler);
 
-			self.webSocket.send(
+			self.socket.send(
 				new ClientSub({
 					id,
 					chainEventIndex: mutexoEventNameToIndex( eventName ) as MutexoChainEventIndex,
@@ -282,7 +305,7 @@ export class MutexoClient
 			self.on("subFailure", handleFailure);
             self.on("error", handleError);
 
-			self.webSocket.send(
+			self.socket.send(
 				new ClientUnsub({
 					id,
 					chainEventIndex: mutexoEventNameToIndex( eventName ) as MutexoChainEventIndex,
@@ -343,7 +366,7 @@ export class MutexoClient
 			self.on("mutexFailure", handleFailure);
             self.on("error", handleError);
 
-            self.webSocket.send(
+            self.socket.send(
                 new ClientReqLock({
                     id,
                     utxoRefs: utxoRefs.map( forceTxOutRef ),
@@ -400,7 +423,7 @@ export class MutexoClient
 			self.on("mutexFailure", handleMtxFailure);
             self.on("error", handleError);
 
-            self.webSocket.send(
+            self.socket.send(
                 new ClientReqFree({
                     id,
                     utxoRefs: utxoRefs.map( forceTxOutRef )
@@ -419,8 +442,8 @@ export class MutexoClient
 
     close()
     {
-        this.webSocket.send( new Close().toCbor().toBuffer() );
-        this.webSocket.close();
+        this.socket.send( new Close().toCbor().toBuffer() );
+        this.socket.close();
         this._destroy();
     }
 
