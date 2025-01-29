@@ -1,6 +1,6 @@
 {
     "name": "@harmoniclabs/mutexo-client",
-    "version": "0.0.13",
+    "version": "0.0.14",
     "main": "./dist/index.js",
     "types": "./dist/index.d.ts",
     "type": "commonjs",
@@ -27,9 +27,9 @@
     },
     "homepage": "https://github.com/HarmonicLabs/mutexo-client#readme",
     "dependencies": {
-        "@harmoniclabs/cardano-ledger-ts": "^0.3.1",
+        "@harmoniclabs/cardano-ledger-ts": "^0.3.2",
         "@harmoniclabs/cbor": "^1.6.0",
-        "@harmoniclabs/mutexo-messages": "^0.0.19",
+        "@harmoniclabs/mutexo-messages": "^0.0.21",
         "@harmoniclabs/obj-utils": "^1.0.0",
         "@harmoniclabs/uint8array-utils": "^1.0.0"
     },
