@@ -1,5 +1,5 @@
 import { ClientReqFree, ClientReqLock, ClientSub, ClientUnsub, IFilter, MutexoError, MutexFailure, MutexoFree, MutexoInput, MutexoLock, MutexoOutput, MutexSuccess, MutexoMessage, SubFailure, SubSuccess, Close, forceFilter, mutexoMessageFromCbor, mutexoMessageFromCborObj, mutexoMessageToName, MutexoChainEventName, mutexoEventNameToIndex, isMutexoChainEventName, MutexoChainEventIndex, MutexoEventListeners, DataOf, MutexoEventName, MutexoEventListener, isMutexoEventName } from "@harmoniclabs/mutexo-messages";
-import { CanBeTxOutRef, forceTxOutRef } from "@harmoniclabs/cardano-ledger-ts";
+import { Address, AddressStr, CanBeTxOutRef, forceTxOutRef, forceTxOutRefStr, TxOutRefStr } from "@harmoniclabs/cardano-ledger-ts";
 import { getUniqueId, releaseUniqueId } from "./utils/clientReqIds";
 import { Cbor } from "@harmoniclabs/cbor";
 import { SocketLike, WrappedSocket, wrapSocket } from "./utils/SocketLike";
@@ -12,6 +12,94 @@ export interface AuthInfos {
 export class MutexoClient
 {
     private readonly socket: WrappedSocket;
+
+    constructor(
+        socketLike: SocketLike,
+        // readonly httpUrl: string
+    )
+    {
+        const self = this;
+
+        this.socket = wrapSocket( socketLike );
+        this._wsReady = this.socket.isReady();
+
+        // updates _wsReady as soon as the socket is ready
+        this.waitWsReady();
+
+        // server sent a close message
+        this.on("close", () => self?.close() );
+        
+        // socket is closed
+        this.socket.on("close", () => self?.close() );
+        this.socket.on("error", () => self?.close() );
+
+        this.socket.on("data", async data => {
+            let bytes: Uint8Array;
+
+            if( data instanceof Blob ) data = await data.arrayBuffer();
+            
+            if( data instanceof ArrayBuffer ) bytes = new Uint8Array( data );
+            else if( data instanceof Uint8Array ) bytes = data;
+            else throw new Error("Invalid data type");
+
+			const msg = mutexoMessageFromCborObj( Cbor.parse( bytes ) );
+
+			const name = mutexoMessageToName( msg );
+
+			if( typeof name !== "string" ) throw new Error("Invalid message");
+
+			this.dispatchEvent( name, msg as any );
+        });
+
+        let hasProcess = false;
+        try {
+            hasProcess = (
+                typeof globalThis?.process === "object" &&
+                typeof process.on === "function"
+            );
+        } catch {}
+
+        if( hasProcess )
+        {
+            try {
+                const cleanup = () => { self?.close(); };
+                process.on("beforeExit", cleanup );
+                process.on("exit", cleanup );
+                process.on("SIGINT", cleanup );
+                process.on("SIGTERM", cleanup );
+            } catch {}
+        }
+    }
+
+    /*
+    getFollowedAddresses(): Promise<AddressStr[]>
+    {
+        return fetch(`${this.httpUrl}/addrs`).then( res => res.json() );
+    }
+
+    getAddressTxOutRefs( addr: AddressStr | Address ): Promise<TxOutRefStr[]>
+    {
+        return fetch(`${this.httpUrl}/addrs/${addr.toString()}/utxos`).then( res => res.json() );
+    }
+
+    async resolveUtxos( refs: CanBeTxOutRef[] )
+    {
+        refs = refs.map( forceTxOutRefStr );
+        const res = await fetch(
+            `${this.httpUrl}/resolve`,
+            {
+                method: "get",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify( refs )
+            }
+        );
+        const json = await res.json();
+        if( !Array.isArray( json ) ) return [];
+        return json.map( entry => ({ ref: entry.ref, outCborHex: entry.out }) );
+    }
+    //*/
 
     private readonly _eventListeners: MutexoEventListeners = Object.freeze({
         free: 		    [],
@@ -114,61 +202,6 @@ export class MutexoClient
         url.searchParams.set("token", token);
 
         return url.toString();
-    }
-
-    constructor( socketLike: SocketLike )
-    {
-        const self = this;
-
-        this.socket = wrapSocket( socketLike );
-        this._wsReady = this.socket.isReady();
-
-        // updates _wsReady as soon as the socket is ready
-        this.waitWsReady();
-
-        // server sent a close message
-        this.on("close", () => self?.close() );
-        
-        // socket is closed
-        this.socket.on("close", () => self?.close() );
-        this.socket.on("error", () => self?.close() );
-
-        this.socket.on("data", async data => {
-            let bytes: Uint8Array;
-
-            if( data instanceof Blob ) data = await data.arrayBuffer();
-            
-            if( data instanceof ArrayBuffer ) bytes = new Uint8Array( data );
-            else if( data instanceof Uint8Array ) bytes = data;
-            else throw new Error("Invalid data type");
-
-			const msg = mutexoMessageFromCborObj( Cbor.parse( bytes ) );
-
-			const name = mutexoMessageToName( msg );
-
-			if( typeof name !== "string" ) throw new Error("Invalid message");
-
-			this.dispatchEvent( name, msg as any );
-        });
-
-        let hasProcess = false;
-        try {
-            hasProcess = (
-                typeof globalThis?.process === "object" &&
-                typeof process.on === "function"
-            );
-        } catch {}
-
-        if( hasProcess )
-        {
-            try {
-                const cleanup = () => { self?.close(); };
-                process.on("beforeExit", cleanup );
-                process.on("exit", cleanup );
-                process.on("SIGINT", cleanup );
-                process.on("SIGTERM", cleanup );
-            } catch {}
-        }
     }
 
     async sub<EvtName extends MutexoChainEventName>(
@@ -517,6 +550,9 @@ export class MutexoClient
     }
     dispatchEvent<EvtName extends MutexoEventName>( evt: EvtName, msg: DataOf<EvtName> ): boolean
     {
+        // after close, no more events can be dispatched
+        if( this._destroyed ) return true;
+
 		let listeners = this._eventListeners[ evt ];
         if( !listeners ) return false;
 
