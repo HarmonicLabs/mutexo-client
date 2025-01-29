@@ -62,7 +62,11 @@ export class MutexoClient
         if( hasProcess )
         {
             try {
-                const cleanup = () => { self?.close(); };
+                const cleanup = () => {
+                    try {
+                        self?.close();
+                    } catch {}
+                };
                 process.on("beforeExit", cleanup );
                 process.on("exit", cleanup );
                 process.on("SIGINT", cleanup );
