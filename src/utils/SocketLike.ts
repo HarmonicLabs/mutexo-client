@@ -1,72 +1,67 @@
 import { isObject } from "@harmoniclabs/obj-utils";
 import type { AddressInfo } from "net";
 
-export interface NodeSocketLike {
-    /**
-     * used to understand if TCP or IPC
-     */
-    address: () => AddressInfo | {},
-    /**
-     * used to check if we should retry to connect.
-     * used to check if the socket is ready when calling `isReady()`.
-     */
-    readonly destroyed: boolean,
-    /**
-     * used to check if the socket is ready when calling `isReady()`.
-     * 
-     * If `true`,`socket.connect(options[, connectListener])` was
-     * called and has not yet finished. It will stay `true` until the socket becomes
-     * connected, then it is set to `false` and the `'connect'` event is emitted. Note
-     * that the `socket.connect(options[, connectListener])` callback is a listener for the `'connect'` event.
-     * @since v6.1.0
-     */
-    readonly connecting: boolean;
-    /**
-     * used to check if the socket is ready when calling `isReady()`.
-     * 
-     * This is `true` if the socket is not connected yet, either because `.connect()`has not yet been called or because it is still in the process of connecting
-     * (see `socket.connecting`).
-     * @since v11.2.0, v10.16.0
-     */
-    readonly pending: boolean;
-    /**
-     * Half-closes the socket. i.e., it sends a FIN packet. It is possible the
-     * server will still send some data.
-     *
-     * See [`writable.end()`](https://nodejs.org/api/stream.html#writableendchunk-encoding-callback) for further details.
-     * @since v0.1.90 (node)
-     * @param [encoding="utf8"] Only used when data is `string`.
-     * @param callback Optional callback for when the socket is finished.
-     * @return The socket itself.
-    **/
-    end(callback?: () => void): this;
-    end(buffer: Uint8Array | string, callback?: () => void): this;
-    end(str: Uint8Array | string, encoding?: BufferEncoding, callback?: () => void): this;
-    /**
-     * Sends data on the socket. The second parameter specifies the encoding in the
-     * case of a string. It defaults to UTF8 encoding.
-     *
-     * Returns `true` if the entire data was flushed successfully to the kernel
-     * buffer. Returns `false` if all or part of the data was queued in user memory.`"drain"` will be emitted when the buffer is again free.
-     *
-     * The optional `callback` parameter will be executed when the data is finally
-     * written out, which may not be immediately.
-     *
-     * See `Writable` stream `write()` method for more
-     * information.
-     * @since v0.1.90 (node)
-     * @param [encoding="utf8"] Only used when data is `string`.
-    **/
-    write(buffer: Uint8Array | string, cb?: (err?: Error) => void): boolean;
-    write(str: Uint8Array | string, encoding?: BufferEncoding, cb?: (err?: Error) => void): boolean;
+// can not get all overload of BufferConstructor['from'], need to copy all it's first arguments here
+// https://github.com/microsoft/TypeScript/issues/32164
+type BufferLike =
+    | Blob
+    | string
+    | Buffer
+    | DataView
+    | number
+    | ArrayBufferView
+    | Uint8Array
+    | ArrayBuffer
+    | SharedArrayBuffer
+    | readonly any[]
+    | readonly number[]
+    | { valueOf(): ArrayBuffer }
+    | { valueOf(): SharedArrayBuffer }
+    | { valueOf(): Uint8Array }
+    | { valueOf(): readonly number[] }
+    | { valueOf(): string }
+    | { [Symbol.toPrimitive](hint: string): string };
 
+type RawData = Buffer | ArrayBuffer | Buffer[];
+
+
+export interface NodeWebSocketLike {
+
+    binaryType: "nodebuffer" | "arraybuffer" | "fragments";
+
+    /** The current state of the connection */
+    readonly readyState: 0 | 1 | 2 | 3;
+
+    close(code?: number, data?: string | Buffer): void;
+    ping(data?: any, mask?: boolean, cb?: (err: Error) => void): void;
+    pong(data?: any, mask?: boolean, cb?: (err: Error) => void): void;
+    // https://github.com/websockets/ws/issues/2076#issuecomment-1250354722
+    send(data: BufferLike, cb?: (err?: Error) => void): void;
+    send(
+        data: BufferLike,
+        options: {
+            mask?: boolean | undefined;
+            binary?: boolean | undefined;
+            compress?: boolean | undefined;
+            fin?: boolean | undefined;
+        },
+        cb?: (err?: Error) => void,
+    ): void;
     /**
      * subscribe to an event
     **/
-    on(event: "close", listener: (hadError: any) => void): this;
-    on(event: "error", listener: (err: Error) => void): this;
-    on(event: "data", listener: (data: Buffer) => void): this;
-    on(event: "connect", listener: () => void): this;
+    // Events
+    on(event: "close", listener: (this: NodeWebSocketLike, code: number, reason: Buffer) => void): this;
+    on(event: "error", listener: (this: NodeWebSocketLike, err: Error) => void): this;
+    on(event: "upgrade", listener: (this: NodeWebSocketLike, request: any) => void): this;
+    on(event: "message", listener: (this: NodeWebSocketLike, data: RawData, isBinary: boolean) => void): this;
+    on(event: "open", listener: (this: NodeWebSocketLike) => void): this;
+    on(event: "ping" | "pong", listener: (this: NodeWebSocketLike, data: Buffer) => void): this;
+    on(
+        event: "unexpected-response",
+        listener: (this: NodeWebSocketLike, request: any, response: any) => void,
+    ): this;
+    on(event: string | symbol, listener: (this: NodeWebSocketLike, ...args: any[]) => void): this;
     // on(event: "drain", listener: () => void): this;
     // on(event: "end", listener: () => void): this;
     // on(event: "lookup", listener: (err: Error, address: string, family: string | number, host: string) => void): this;
@@ -75,24 +70,33 @@ export interface NodeSocketLike {
     /**
      * unsubscribe to an event
     **/
-    removeListener(event: "close", listener: (hadError: boolean) => void): this;
+    removeListener(event: "close", listener: (code: number, reason: Buffer) => void): this;
     removeListener(event: "error", listener: (err: Error) => void): this;
-    removeListener(event: "data", listener: (data: Buffer) => void): this;
-    removeListener(event: "connect", listener: () => void): this;
+    removeListener(event: "upgrade", listener: (request: any) => void): this;
+    removeListener(event: "message", listener: (data: RawData, isBinary: boolean) => void): this;
+    removeListener(event: "open", listener: () => void): this;
+    removeListener(event: "ping" | "pong", listener: (data: Buffer) => void): this;
+    removeListener(
+        event: "unexpected-response",
+        listener: (request: any, response: any) => void,
+    ): this;
+    removeListener(event: string | symbol, listener: (...args: any[]) => void): this;
 }
 
 
-export function isNodeSocketLike( s: any ): s is NodeSocketLike
+export function isNodeWebSocketLike( s: any ): s is NodeWebSocketLike
 {
     return isObject( s ) && (
-        typeof s.end            === "function" &&
-        typeof s.write          === "function" &&
         typeof s.on             === "function" &&
-        typeof s.removeListener === "function"
+        typeof s.removeListener === "function" &&
+        typeof s.send           === "function" &&
+        typeof s.close          === "function" &&
+        typeof s.ping           === "function" &&
+        typeof s.pong           === "function"
     );
 }
 
-export type NodeSocketLikeEvt
+export type NodeWebSocketLikeEvt
     = "close"
     | "connect"
     | "data"
@@ -160,7 +164,7 @@ export interface WebSocketLike {
 
 export function isWebSocketLike( s: any ): s is WebSocketLike
 {
-    return isObject( s ) && (
+    return isObject( s ) && !isNodeWebSocketLike( s ) && (
         typeof s.send                   === "function" &&
         typeof s.close                  === "function" &&
         typeof s.addEventListener       === "function" &&
@@ -174,17 +178,7 @@ export type WebSocketLikeEvt
     | "message" // node equivalent of "data"
     | "open";   // node equivalent of "connect" or "ready"
 
-export type SocketLike = NodeSocketLike | WebSocketLike;
-
-export function isNode2NodeSocket( socketLike: SocketLike ): boolean
-{
-    // WebSockets only n2n
-    if( isWebSocketLike( socketLike ) ) return true;
-
-    return isNodeSocketLike( socketLike ) &&
-        // UNIX socket address (node-to-client) is `{}` 
-        Object.keys( socketLike.address() ?? {} ).length > 0 ;
-}
+export type SocketLike = NodeWebSocketLike | WebSocketLike;
 
 /**
  * any `SocketLike` but with a common interface
@@ -200,7 +194,7 @@ export interface WrappedSocket {
     **/
     on(event: "close", listener: ( hadError: boolean ) => void): void;
     on(event: "error", listener: ( thing: Error | Event ) => void ): void;
-    on(event: "data", listener: ( data: Uint8Array ) => void): void;
+    on(event: "data", listener: ( data: RawData ) => void): void;
     on(event: "connect", listener: () => void): void;
     /**
      * unsubscribe to an event
@@ -231,14 +225,14 @@ function webSocketLikeIsReady( this: WebSocketLike ): boolean
     return this.readyState === 1;
 }
 
-function nodeSocketLikeIsClosed( this: NodeSocketLike ): boolean
+function nodeWebSocketLikeIsClosed( this: NodeWebSocketLike ): boolean
 {
-    return this.destroyed;
+    return this.readyState >= 2;
 }
 
-function nodeSocketLikeIsReady( this: NodeSocketLike ): boolean
+function nodeWebSocketLikeIsReady( this: NodeWebSocketLike ): boolean
 {
-    return !this.connecting && !this.pending && !this.destroyed;
+    return this.readyState === 1;
 }
 
 export function wrapSocket(
@@ -246,7 +240,79 @@ export function wrapSocket(
 ): WrappedSocket
 {
     const _evts: { [key: string]: any } = {};
-    if( isWebSocketLike( socketLike ) )
+    if( isNodeWebSocketLike( socketLike ) )
+    {
+        socketLike.binaryType = "arraybuffer";
+
+        const pingHandler = () => socketLike.pong();
+        socketLike.on("ping", pingHandler);
+        if( globalThis.process && typeof globalThis.process.on === "function" )
+        {
+            const removeHandler = () => {
+                try {
+                    socketLike?.removeListener("ping", pingHandler);
+                } catch {}
+            }
+            try {
+                process.on("beforeExit", removeHandler );
+                process.on("exit", removeHandler );
+                process.on('SIGTERM', removeHandler );
+                process.on('SIGINT', removeHandler );
+            }
+            catch {}
+        }
+
+        const socket: WrappedSocket = {
+            unwrap: () => socketLike as any,
+            isClosed: nodeWebSocketLikeIsClosed.bind( socketLike ),
+            isReady: nodeWebSocketLikeIsReady.bind( socketLike ),
+            send: socketLike.send.bind( socketLike ),
+            close: socketLike.close.bind( socketLike ),
+            on( evtName, listener ) {
+                switch( evtName )
+                {
+                    case "close":
+                        socketLike.on("close", listener);
+                        break;
+                    case "error":
+                        socketLike.on("error", listener);
+                        break;
+                    case "connect":
+                        socketLike.on("open", listener);
+                        break;
+                    case "data":
+                        socketLike.on("message", listener);
+                        break;
+                    default:
+                        // unknown event type; ignore
+                        break;
+                }
+            },
+            off( evtName, listener ) {
+                switch( evtName )
+                {
+                    case "close":
+                        socketLike.removeListener("close", listener);
+                        break;
+                    case "error":
+                        socketLike.removeListener("error", listener);
+                        break;
+                    case "connect":
+                        socketLike.removeListener("open", listener);
+                        break;
+                    case "data":
+                        socketLike.removeListener("message", listener);
+                        break;
+                    default:
+                        // unknown event type; ignore
+                        break;
+                }
+            },
+        };
+
+        return Object.freeze( socket );
+    }
+    else if( isWebSocketLike( socketLike ) )
     {
         const socket: WrappedSocket = {
             unwrap: () => socketLike as any,
@@ -322,20 +388,6 @@ export function wrapSocket(
                     // unknown event type; ignore
                 }
             }
-        };
-
-        return Object.freeze( socket );
-    }
-    else if( isNodeSocketLike( socketLike ) )
-    {
-        const socket: WrappedSocket = {
-            unwrap: () => socketLike as any,
-            isClosed: nodeSocketLikeIsClosed.bind( socketLike ),
-            isReady: nodeSocketLikeIsReady.bind( socketLike ),
-            send: socketLike.write.bind( socketLike ),
-            close: socketLike.end.bind( socketLike ),
-            on: socketLike.on.bind( socketLike ),
-            off: socketLike.removeListener.bind( socketLike ),
         };
 
         return Object.freeze( socket );

@@ -116,35 +116,27 @@ export class MutexoClient
         return url.toString();
     }
 
-    constructor( createSocket: () => (Promise<SocketLike> | SocketLike) )
+    constructor( socketLike: SocketLike )
     {
         const self = this;
 
-        const createSocketResult = createSocket();
-        if( createSocketResult instanceof Promise )
-        {
-            createSocketResult.then( socket => {
-                (self as any).socket = wrapSocket( socket );
-            });
-            (this as any).socket = undefined;
-            this._wsReady = false;
-        }
-        else
-        {
-            this.socket = wrapSocket( createSocketResult );
-            this._wsReady = this.socket.isReady();
-        }
+        this.socket = wrapSocket( socketLike );
+        this._wsReady = this.socket.isReady();
 
         // updates _wsReady as soon as the socket is ready
         this.waitWsReady();
 
-        this.socket.on("close", this._destroy );
-        this.socket.on("error", this._destroy );
+        // server sent a close message
+        this.on("close", () => self?.close() );
+        
+        // socket is closed
+        this.socket.on("close", () => self?.close() );
+        this.socket.on("error", () => self?.close() );
 
         this.socket.on("data", async data => {
             let bytes: Uint8Array;
 
-            if( data instanceof Blob ) data = await data.arrayBuffer() as any;
+            if( data instanceof Blob ) data = await data.arrayBuffer();
             
             if( data instanceof ArrayBuffer ) bytes = new Uint8Array( data );
             else if( data instanceof Uint8Array ) bytes = data;
@@ -159,8 +151,24 @@ export class MutexoClient
 			this.dispatchEvent( name, msg as any );
         });
 
-        process.on("beforeExit", () => { self?._destroy(); });
-        process.on("exit", () => { self?._destroy(); })
+        let hasProcess = false;
+        try {
+            hasProcess = (
+                typeof globalThis?.process === "object" &&
+                typeof process.on === "function"
+            );
+        } catch {}
+
+        if( hasProcess )
+        {
+            try {
+                const cleanup = () => { self?.close(); };
+                process.on("beforeExit", cleanup );
+                process.on("exit", cleanup );
+                process.on("SIGINT", cleanup );
+                process.on("SIGTERM", cleanup );
+            } catch {}
+        }
     }
 
     async sub<EvtName extends MutexoChainEventName>(
@@ -432,17 +440,9 @@ export class MutexoClient
         });
     }
 
-    private _destroy()
-    {
-        if( !this ) return;
-        this.dispatchEvent("close", new Close());
-        this._destroyed = true;
-        this._wsReady = false;
-    }
-
     close()
     {
-        this.socket.send( new Close().toCbor().toBuffer() );
+        if( this.socket.isReady() ) this.socket.send( new Close().toCbor().toBuffer() );
         this.socket.close();
         this._destroy();
     }
@@ -548,6 +548,21 @@ export class MutexoClient
         }
 
         return this;
+    }
+
+    private _destroy()
+    {
+        if( !this ) return;
+
+        if( typeof this.dispatchEvent === "function" )
+        {
+            try {
+                this.dispatchEvent("close", new Close());
+            } catch {}
+        }
+        
+        this._destroyed = true;
+        this._wsReady = false;
     }
 }
 
