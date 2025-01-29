@@ -126,14 +126,14 @@ export class MutexoClient
         subFailure:     []
     });
 
-    private _destroyed: boolean = false;
+    private _closed: boolean = false;
 
     private _wsReady: boolean;
     async waitWsReady(): Promise<void>
     {
         while( !this.socket ) { await new Promise(( resolve ) => setTimeout( resolve, 100 )); }
 
-        if( this._destroyed ) throw new Error("Client was closed");
+        if( this._closed ) throw new Error("Client was closed");
         if( this._wsReady ) return;
 
         return new Promise(( resolve ) => {
@@ -473,11 +473,19 @@ export class MutexoClient
         });
     }
 
+    /**
+     * DOES NOT dispatch  the close event
+     * 
+     * if you want to close the client and dispatch the close event,
+     * call `this.dispatchEvent("close", new Close())` instead
+     */
     close()
     {
+        if( !this ) return;
         if( this.socket.isReady() ) this.socket.send( new Close().toCbor().toBuffer() );
-        this.socket.close();
-        this._destroy();
+        if( !this.socket.isClosed() ) this.socket.close();
+        this._wsReady = false;
+        this._closed = true;
     }
 
     addEventListener<Evt extends MutexoEventName>( evt: Evt, callback: ( data: DataOf<Evt> ) => void, opts?: AddEventListenerOptions ): this
@@ -551,7 +559,7 @@ export class MutexoClient
     dispatchEvent<EvtName extends MutexoEventName>( evt: EvtName, msg: DataOf<EvtName> ): boolean
     {
         // after close, no more events can be dispatched
-        if( this._destroyed ) return true;
+        if( this._closed ) return true;
 
 		let listeners = this._eventListeners[ evt ];
         if( !listeners ) return false;
@@ -584,21 +592,6 @@ export class MutexoClient
         }
 
         return this;
-    }
-
-    private _destroy()
-    {
-        if( !this ) return;
-
-        if( typeof this.dispatchEvent === "function" )
-        {
-            try {
-                this.dispatchEvent("close", new Close());
-            } catch {}
-        }
-        
-        this._destroyed = true;
-        this._wsReady = false;
     }
 }
 
